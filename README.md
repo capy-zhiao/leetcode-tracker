@@ -68,6 +68,18 @@ Anthropic Claude API                       追问生成 + code review(可选)
 
 ## 🚀 本地运行
 
+**一键启动**(推荐):
+
+```bash
+./start.sh
+```
+
+会自动检查依赖、按需初始化数据库、起前后端、打印今日任务、并打开浏览器。
+按 `Ctrl+C` 停止两个服务。
+
+<details>
+<summary>或者手动分别启动</summary>
+
 ```bash
 # 后端
 cd backend
@@ -82,6 +94,8 @@ cd frontend
 npm install
 npm run dev                           # http://localhost:5173
 ```
+
+</details>
 
 运行测试:`cd backend && ./.venv/bin/python -m pytest -q`
 
