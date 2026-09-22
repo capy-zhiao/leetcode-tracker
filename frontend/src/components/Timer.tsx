@@ -1,6 +1,6 @@
-// 计时器。演示 React 两个核心 Hook:
-//   useState  —— 组件的「记忆」,值一变界面自动重画
-//   useEffect —— 处理「副作用」(定时器、网络请求这类不属于渲染的事)
+// Timer. Demonstrates React's two core hooks:
+//   useState  — the component's memory; changing it re-renders the UI
+//   useEffect — side effects (timers, network calls) that aren't part of rendering
 import { useEffect, useRef, useState } from 'react'
 
 export function formatTime(sec: number) {
@@ -13,18 +13,19 @@ interface Props {
   running: boolean
   seconds: number
   onTick: (s: number) => void
-  limitMinutes?: number          // 传了就是倒计时(模拟面试用)
+  limitMinutes?: number          // when set, counts down instead of up (mock interview)
 }
 
 export default function Timer({ running, seconds, onTick, limitMinutes }: Props) {
-  // useRef 存一个「不触发重画」的值 —— 这里用来记住定时器 id
+  // useRef holds a value that does NOT trigger a re-render when it changes
   const saved = useRef(onTick)
   saved.current = onTick
 
   useEffect(() => {
     if (!running) return
     const id = setInterval(() => saved.current(seconds + 1), 1000)
-    // 返回的函数会在「组件消失」或「running 变化」时执行 —— 清理定时器,防内存泄漏
+    // The returned function runs when the component unmounts or `running` changes —
+    // clearing the interval here is what prevents a leak.
     return () => clearInterval(id)
   }, [running, seconds])
 
@@ -38,13 +39,13 @@ export default function Timer({ running, seconds, onTick, limitMinutes }: Props)
         {over && '-'}{formatTime(display)}
       </span>
       {limit !== null && (
-        <span className="text-xs text-slate-400">{over ? '已超时' : `/ ${limitMinutes} 分钟`}</span>
+        <span className="text-xs text-slate-400">{over ? 'over time' : `/ ${limitMinutes} min`}</span>
       )}
     </div>
   )
 }
 
-/** 把计时状态收进一个自定义 Hook，页面里用起来只要一行 */
+/** Bundles the timer state into a custom hook so pages need a single line to use it. */
 export function useTimer() {
   const [seconds, setSeconds] = useState(0)
   const [running, setRunning] = useState(false)

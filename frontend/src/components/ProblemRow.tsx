@@ -19,10 +19,10 @@ export default function ProblemRow({ item }: { item: QueueItem }) {
       <span className="flex-1 font-medium">{p.title}</span>
 
       {item.overdue_days > 0 && (
-        <span className="chip bg-red-50 text-red-600">逾期 {item.overdue_days} 天</span>
+        <span className="chip bg-red-50 text-red-600">{item.overdue_days}d overdue</span>
       )}
       {p.state && p.state.lapses > 0 && (
-        <span className="chip bg-orange-50 text-orange-600" title="历史翻车次数">
+        <span className="chip bg-orange-50 text-orange-600" title="times failed before">
           ✗{p.state.lapses}
         </span>
       )}

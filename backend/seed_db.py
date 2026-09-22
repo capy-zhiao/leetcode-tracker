@@ -1,10 +1,10 @@
-"""把 data/seed.json 导入数据库,并把 15 个算法模板也建进去。
+"""Import data/seed.json into the database and register the 15 algorithm templates.
 
-用法:  python seed_db.py           # 增量:只补新题,保留做题记录
-       python seed_db.py --reset   # 清库重来
+Usage:  python seed_db.py           incremental: add new problems, keep attempt history
+        python seed_db.py --reset   wipe and start over
 
-已解的题(markdown 里写过代码的)初始状态设为「今天到期」——
-这样 app 第一天就会按优先级给你排复习队列,直接接管手工的二刷计划。
+Problems already solved in the markdown notes start out "due today", so the very first
+daily queue picks up where the manual study plan left off.
 """
 from __future__ import annotations
 
@@ -21,42 +21,42 @@ from app.srs import DEFAULT_EASE
 
 SEED = Path(__file__).resolve().parent.parent / "data" / "seed.json"
 
-# 历史翻车次数 —— 从 REVIEW.md 的「错题盲写队列」迁移过来。
-# 有了它,第一天的复习队列就会自动把你返工过的题顶到最前面,
-# 而不是所有已解题挤在同一个优先级上。
+# Historic failure counts, migrated from the manual review plan. Without these every solved
+# problem would share the same priority; with them the first queue surfaces the problems
+# that were actually difficult.
 KNOWN_LAPSES = {
-    994: 3,   # 烂橘子:count 数错对象 -> flag 歪招 -> -1 判断,返工 3 版
-    695: 3,   # 最大岛屿面积:类型/传参/visited 查错/缺 return
-    261: 3,   # Graph Valid Tree:模板抄错 -> flag 覆盖 -> 缺边数检查
-    130: 2,   # 被围绕区域:数字零 vs 字母 O、T 没刹车
-    200: 2,   # 岛屿数量:count 放进 dfs、刹车缺失
-    417: 2,   # 太平洋大西洋:两个海共用一个 visited
-    207: 2,   # 课程表:adj 方向反了(DFS 版 + Kahn 版都要盲写)
-    33:  1,   # 旋转数组搜索:当时靠大量 print 才调通
+    994: 3,   # Rotting Oranges: wrong counter, flag hack, -1 condition — three rewrites
+    695: 3,   # Max Area of Island: type, pass-by-value, visited lookup, missing return
+    261: 3,   # Graph Valid Tree: template copied wrong, flag overwrite, missing edge check
+    130: 2,   # Surrounded Regions: digit zero vs letter O, missing guard on 'T'
+    200: 2,   # Number of Islands: counter inside dfs, missing guard
+    417: 2,   # Pacific Atlantic: both oceans shared one visited set
+    207: 2,   # Course Schedule: adjacency direction reversed
+    33:  1,   # Search in Rotated Sorted Array: only worked after heavy print debugging
     153: 1,
     424: 1,
-    743: 1,   # Dijkstra:忘了累计 t1+t2,写成了 Prim
-    853: 1,   # Car Fleet:else if / 忘 return
-    128: 1,   # 最长连续序列:返回 length 而非 max_
+    743: 1,   # Dijkstra: forgot to accumulate t1+t2, effectively wrote Prim
+    853: 1,   # Car Fleet: "else if" instead of elif, missing return
+    128: 1,   # Longest Consecutive Sequence: returned length instead of the max
 }
 
-# 15 个算法模板,和 00_templates.md 对应。它们也走 SRS,定期盲写。
+# The 15 templates from the notes. They ride the same SRS machinery.
 TEMPLATES = [
-    (9001, "并查集 Union-Find", 11, "Graphs", "Hard"),
-    (9002, "网格 DFS 三刹车", 11, "Graphs", "Medium"),
-    (9003, "多源 BFS 层循环", 11, "Graphs", "Medium"),
-    (9004, "拓扑排序 Kahn", 11, "Graphs", "Medium"),
-    (9005, "回溯骨架", 10, "Backtracking", "Medium"),
-    (9006, "二分查找闭区间", 5, "Binary Search", "Medium"),
-    (9007, "滑动窗口", 3, "Sliding Window", "Medium"),
-    (9008, "单调栈", 4, "Stack", "Medium"),
-    (9009, "链表三件套", 6, "Linked List", "Medium"),
-    (9010, "树 DFS 与 BFS", 7, "Trees", "Easy"),
-    (9011, "Trie 前缀树", 8, "Tries", "Medium"),
-    (9012, "堆 heapq", 9, "Heap / Priority Queue", "Easy"),
+    (9001, "Union-Find", 11, "Graphs", "Hard"),
+    (9002, "Grid DFS (three guards)", 11, "Graphs", "Medium"),
+    (9003, "Multi-source BFS (level loop)", 11, "Graphs", "Medium"),
+    (9004, "Topological sort (Kahn)", 11, "Graphs", "Medium"),
+    (9005, "Backtracking skeleton", 10, "Backtracking", "Medium"),
+    (9006, "Binary search (closed interval)", 5, "Binary Search", "Medium"),
+    (9007, "Sliding window", 3, "Sliding Window", "Medium"),
+    (9008, "Monotonic stack", 4, "Stack", "Medium"),
+    (9009, "Linked list trio", 6, "Linked List", "Medium"),
+    (9010, "Tree DFS and BFS", 7, "Trees", "Easy"),
+    (9011, "Trie", 8, "Tries", "Medium"),
+    (9012, "Heap (heapq)", 9, "Heap / Priority Queue", "Easy"),
     (9013, "Dijkstra / Prim / Bellman-Ford", 12, "Advanced Graphs", "Hard"),
-    (9014, "DP 三问 + 记忆化", 13, "1-D DP", "Medium"),
-    (9015, "区间合并 + 扫描线", 16, "Intervals", "Medium"),
+    (9014, "DP three questions + memoization", 13, "1-D DP", "Medium"),
+    (9015, "Interval merge + sweep line", 16, "Intervals", "Medium"),
 ]
 
 
@@ -64,7 +64,7 @@ def main() -> None:
     reset = "--reset" in sys.argv
     if reset:
         Base.metadata.drop_all(bind=engine)
-        print("🗑  已清空旧库")
+        print("Dropped existing tables")
     Base.metadata.create_all(bind=engine)
 
     data = json.loads(SEED.read_text(encoding="utf-8"))
@@ -89,7 +89,7 @@ def main() -> None:
                 db.flush()
                 added += 1
             else:
-                # 增量更新静态字段,不碰做题记录
+                # Refresh static fields without touching attempt history
                 p.title, p.difficulty = item["title"], item["difficulty"]
                 p.url = item["url"] or p.url
                 if item["notes"] and not p.notes:
@@ -98,18 +98,17 @@ def main() -> None:
                     p.code = item["code"]
                 updated += 1
 
-            # 已解的题 -> 立即到期,进复习队列
+            # Already solved -> due today, so it enters the review queue immediately
             if item["solved"] and p.state is None:
                 lapses = KNOWN_LAPSES.get(item["number"], 0)
                 db.add(ReviewState(
                     problem_id=p.id, interval_days=1,
-                    # 翻过车的题 ease 调低,间隔涨得慢一些
+                    # Problems that caused trouble get a lower ease, so gaps grow slower
                     ease=max(1.3, DEFAULT_EASE - 0.2 * lapses),
                     reps=1, lapses=lapses, due=today, total_attempts=0,
                 ))
                 with_state += 1
 
-        # 模板
         t_added = 0
         for num, name, ch_num, ch, diff in TEMPLATES:
             if num in existing:
@@ -117,7 +116,7 @@ def main() -> None:
             t = Problem(
                 number=num, title=name, difficulty=diff, chapter_num=ch_num,
                 chapter=ch, url="", in_neetcode150=False, kind="template",
-                notes="盲写练习:见 00_templates.md", code="",
+                notes="Blind-write practice", code="",
             )
             db.add(t)
             db.flush()
@@ -128,10 +127,10 @@ def main() -> None:
     finally:
         db.close()
 
-    print(f"\n✅ 导入完成")
-    print(f"   新增题目: {added}   更新: {updated}")
-    print(f"   已解 -> 今日到期: {with_state}")
-    print(f"   模板: {t_added}")
+    print("\nImport complete")
+    print(f"  problems added: {added}   updated: {updated}")
+    print(f"  solved -> due today: {with_state}")
+    print(f"  templates: {t_added}")
 
 
 if __name__ == "__main__":

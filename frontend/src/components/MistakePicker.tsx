@@ -1,4 +1,5 @@
-// 「这次犯了什么错」多选器。标签来自后端,是照着真实 bug 史定的。
+// "What went wrong this time" multi-select. Tags come from the backend and are based on
+// mistakes actually made while practising, not a generic list.
 import { useEffect, useState } from 'react'
 import { api } from '../lib/api'
 import type { MistakeTag } from '../lib/types'
@@ -8,7 +9,7 @@ export default function MistakePicker({
 }: { selected: string[]; onChange: (ids: string[]) => void }) {
   const [tags, setTags] = useState<MistakeTag[]>([])
 
-  // 空依赖数组 [] = 只在组件第一次出现时跑一次
+  // An empty dependency array means "run once, when this component first appears"
   useEffect(() => { api.mistakeTags().then(setTags).catch(() => {}) }, [])
 
   const toggle = (id: string) =>

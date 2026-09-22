@@ -1,5 +1,5 @@
-// 路由表:哪个网址显示哪个页面。
-// :number 是动态参数,比如 /solve/994 会把 "994" 传给 Solve 页面。
+// Route table: which URL renders which page.
+// ":number" is a dynamic segment — /solve/994 passes "994" to the Solve page.
 import { Route, Routes } from 'react-router-dom'
 import Layout from './components/Layout'
 import Today from './pages/Today'

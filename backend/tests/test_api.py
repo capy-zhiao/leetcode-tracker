@@ -1,4 +1,4 @@
-"""API 端到端测试。"""
+"""End-to-end API tests."""
 from datetime import date, timedelta
 
 
@@ -9,17 +9,17 @@ def test_health(client):
 
 
 def test_today_queue_orders_by_priority(client, sample_problems):
-    """逾期久 + 翻车多的题要排在最前面 —— 994 应该压过 200。"""
+    """Long overdue plus repeated failures should outrank a problem merely due today."""
     r = client.get("/review/today")
     assert r.status_code == 200
     q = r.json()
 
     numbers = [i["problem"]["number"] for i in q["reviews"]]
-    assert numbers[0] == 994, f"994 该排第一,实际顺序 {numbers}"
+    assert numbers[0] == 994, f"994 should lead the queue, got {numbers}"
     assert q["total_due"] == 2
     assert q["reviews"][0]["overdue_days"] == 5
 
-    # 没做过的题进「新题」组
+    # Never-attempted problems land in the "new" bucket
     assert [i["problem"]["number"] for i in q["new_problems"]] == [1]
 
 
@@ -28,25 +28,25 @@ def test_daily_cap_defers_overflow(client, sample_problems):
     q = r.json()
     assert len(q["reviews"]) == 1
     assert q["total_due"] == 2
-    assert q["deferred"] == 1, "超出上限的要顺延,不是丢掉"
+    assert q["deferred"] == 1, "overflow is deferred, not dropped"
 
 
 def test_submit_attempt_updates_srs(client, sample_problems):
     r = client.post("/review/1/attempt", json={
         "grade": "good", "seconds": 600, "mistakes": ["forgot_return"],
-        "code": "class Solution: pass", "note": "字典存补数",
+        "code": "class Solution: pass", "note": "hash map of complements",
     })
     assert r.status_code == 200, r.text
     body = r.json()
 
-    # 首次 good = 4 天,Two Sum 是 Easy -> ×1.15 -> 5 天(Easy 题忘得慢,间隔更长)
+    # First "good" is 4 days; Two Sum is Easy so x1.15 -> 5 days
     assert body["next_due_in_days"] == 5
     assert body["state"]["reps"] == 1
     assert body["state"]["total_attempts"] == 1
     assert body["state"]["best_seconds"] == 600
     assert body["state"]["due"] == (date.today() + timedelta(days=5)).isoformat()
 
-    # 做完后不该再出现在今天的复习队列里
+    # It should drop out of today's review queue
     nums = [i["problem"]["number"] for i in client.get("/review/today").json()["reviews"]]
     assert 1 not in nums
 
@@ -80,7 +80,7 @@ def test_mistake_stats_aggregate(client, sample_problems):
     assert stats[0]["id"] == "forgot_return"
     assert stats[0]["count"] == 2
     assert stats[0]["pct"] > 60
-    assert stats[0]["label"]                     # 带上人话标签和提示
+    assert stats[0]["label"]                     # label and hint come along for the UI
     assert stats[0]["hint"]
 
 
@@ -99,7 +99,7 @@ def test_attempt_history_for_diff(client, sample_problems):
     client.post("/review/1/attempt", json={"grade": "good", "code": "v2"})
     hist = client.get("/review/1/attempts").json()
     assert len(hist) == 2
-    assert hist[0]["code"] == "v2"               # 最新的在前,方便 diff
+    assert hist[0]["code"] == "v2"               # newest first, ready to diff
 
 
 def test_problem_filters(client, sample_problems):
@@ -109,13 +109,18 @@ def test_problem_filters(client, sample_problems):
     assert client.get("/problems", params={"q": "island"}).json()[0]["number"] == 200
 
 
-def test_followups_fallback_without_api_key(client, sample_problems):
-    """没配 ANTHROPIC_API_KEY 时要降级成通用追问,不能报错。"""
+def test_followups_fall_back_without_a_provider(client, sample_problems):
+    """With LLM_PROVIDER unset the endpoint must still return generic follow-ups."""
     r = client.get("/mock/1/followups")
     assert r.status_code == 200
     items = r.json()
     assert len(items) >= 3
     assert all(i["question"] for i in items)
+
+
+def test_code_review_requires_a_provider(client, sample_problems):
+    r = client.post("/mock/1/review-code", json={"code": "print(1)"})
+    assert r.status_code == 503
 
 
 def test_mock_start(client, sample_problems):

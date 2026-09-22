@@ -1,9 +1,9 @@
-"""数据库表结构(SQLAlchemy 2.0 风格)。
+"""Database tables (SQLAlchemy 2.0 style).
 
-三张核心表:
-  Problem     — 250 道题的静态信息
-  ReviewState — 每道题的 SRS 状态(1:1),srs.SrsState 的持久化版本
-  Attempt     — 每次做题的记录(1:N),统计和 diff 都靠它
+Three core tables:
+  Problem     — static information for the 250 problems
+  ReviewState — SRS state per problem (1:1); the persisted form of srs.SrsState
+  Attempt     — one row per attempt (1:N); powers stats and code diffs
 """
 from __future__ import annotations
 
@@ -24,7 +24,7 @@ class Problem(Base):
     __tablename__ = "problems"
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    number: Mapped[int] = mapped_column(Integer, unique=True, index=True)  # LeetCode 题号
+    number: Mapped[int] = mapped_column(Integer, unique=True, index=True)  # LeetCode number
     title: Mapped[str] = mapped_column(String(200))
     difficulty: Mapped[str] = mapped_column(String(10))          # Easy / Medium / Hard
     chapter_num: Mapped[int] = mapped_column(Integer, index=True)
@@ -32,8 +32,8 @@ class Problem(Base):
     url: Mapped[str] = mapped_column(String(300), default="")
     in_neetcode150: Mapped[bool] = mapped_column(Boolean, default=True)
     kind: Mapped[str] = mapped_column(String(20), default="problem")  # problem | template
-    notes: Mapped[str] = mapped_column(Text, default="")         # 从 markdown 迁移过来的思路
-    code: Mapped[str] = mapped_column(Text, default="")          # 最近一次 AC 的代码
+    notes: Mapped[str] = mapped_column(Text, default="")         # migrated from markdown notes
+    code: Mapped[str] = mapped_column(Text, default="")          # most recent accepted solution
 
     state: Mapped["ReviewState"] = relationship(
         back_populates="problem", uselist=False, cascade="all, delete-orphan"
@@ -48,7 +48,7 @@ class Problem(Base):
 
 
 class ReviewState(Base):
-    """SRS 状态。字段和 srs.SrsState 一一对应。"""
+    """SRS state. Fields mirror srs.SrsState one for one."""
     __tablename__ = "review_states"
 
     problem_id: Mapped[int] = mapped_column(ForeignKey("problems.id"), primary_key=True)
@@ -64,7 +64,7 @@ class ReviewState(Base):
     problem: Mapped[Problem] = relationship(back_populates="state")
 
     def to_srs(self) -> SrsState:
-        """转成纯函数用的不可变对象 —— DB 和算法之间的桥。"""
+        """Bridge from the ORM row to the immutable value the pure functions operate on."""
         return SrsState(
             interval_days=self.interval_days, ease=self.ease,
             reps=self.reps, lapses=self.lapses, due=self.due,
@@ -85,16 +85,16 @@ class Attempt(Base):
     seconds: Mapped[int] = mapped_column(Integer, default=0)
     looked_at_solution: Mapped[bool] = mapped_column(Boolean, default=False)
     had_bugs: Mapped[bool] = mapped_column(Boolean, default=False)
-    mistakes: Mapped[list] = mapped_column(JSON, default=list)   # constants.MISTAKE_TAGS 的 id
+    mistakes: Mapped[list] = mapped_column(JSON, default=list)   # ids from constants.MISTAKE_TAGS
     code: Mapped[str] = mapped_column(Text, default="")
-    note: Mapped[str] = mapped_column(Text, default="")          # 「为什么卡住」一句话
+    note: Mapped[str] = mapped_column(Text, default="")          # one line: why you got stuck
     mode: Mapped[str] = mapped_column(String(10), default="practice")  # practice | mock
 
     problem: Mapped[Problem] = relationship(back_populates="attempts")
 
 
 class FollowUp(Base):
-    """面试官追问。由 Claude 预生成并缓存,mock 模式用。"""
+    """Interviewer follow-up questions, generated once by the LLM and cached for mock mode."""
     __tablename__ = "followups"
 
     id: Mapped[int] = mapped_column(primary_key=True)

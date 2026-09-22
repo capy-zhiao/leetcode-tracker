@@ -1,4 +1,4 @@
-"""题库浏览 / 详情 / 笔记编辑。"""
+"""Problem browsing, detail view and note editing."""
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy import select
 from sqlalchemy.orm import Session, selectinload
@@ -15,12 +15,13 @@ router = APIRouter(prefix="/problems", tags=["problems"])
 @router.get("", response_model=list[ProblemOut])
 def list_problems(
     db: Session = Depends(get_db),
-    chapter: int | None = Query(None, description="按章节号筛选"),
+    chapter: int | None = Query(None, description="Filter by chapter number"),
     difficulty: str | None = Query(None, description="Easy / Medium / Hard"),
-    status_filter: str | None = Query(None, alias="status",
-                                      description="new(没做过) / learning(做过但没掌握) / mastered(间隔≥21天)"),
-    q: str | None = Query(None, description="标题或题号搜索"),
-    kind: str = Query("problem", description="problem 或 template"),
+    status_filter: str | None = Query(
+        None, alias="status",
+        description="new (never attempted) / learning (attempted, interval < 21d) / mastered"),
+    q: str | None = Query(None, description="Search by title or problem number"),
+    kind: str = Query("problem", description="problem or template"),
 ):
     stmt = select(Problem).options(selectinload(Problem.state)).where(Problem.kind == kind)
     if chapter is not None:
@@ -46,7 +47,7 @@ def list_problems(
 
 @router.get("/mistake-tags")
 def mistake_tags():
-    """前端渲染「犯了什么错」选择器用。"""
+    """Feeds the "what went wrong" picker in the UI."""
     return MISTAKE_TAGS
 
 
@@ -61,7 +62,7 @@ def update_problem(
     problem: Problem = Depends(get_problem),
     db: Session = Depends(get_db),
 ):
-    """更新思路笔记或代码(做题页里随手记)。"""
+    """Update the notes or the stored solution."""
     for field in ("notes", "code"):
         if field in payload:
             setattr(problem, field, payload[field] or "")

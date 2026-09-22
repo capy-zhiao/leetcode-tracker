@@ -1,4 +1,4 @@
-// 做题页:计时 -> 写代码 -> 评分 -> 标错误 -> 提交 -> SRS 算出下次复习时间
+// Solve page: time it -> write code -> grade -> tag mistakes -> submit -> SRS schedules it
 import { useEffect, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import GradeBar from '../components/GradeBar'
@@ -8,7 +8,7 @@ import { api } from '../lib/api'
 import type { Attempt, CodeReview, Grade, ProblemDetail } from '../lib/types'
 
 export default function Solve() {
-  const { number } = useParams()           // 从网址 /solve/994 里拿到 "994"
+  const { number } = useParams()           // pulls "994" out of /solve/994
   const num = Number(number)
 
   const [p, setP] = useState<ProblemDetail | null>(null)
@@ -31,7 +31,7 @@ export default function Solve() {
     api.attempts(num).then(setHistory).catch(() => {})
   }, [num])
 
-  // 停止计时后,问后端「这个成绩该打几分」,自动选中推荐项
+  // Stopping the timer asks the backend which grade the performance deserves
   const stopAndSuggest = async () => {
     timer.pause()
     if (!p) return
@@ -65,50 +65,52 @@ export default function Solve() {
     } catch (e) { alert((e as Error).message) } finally { setBusy(false) }
   }
 
-  if (!p) return <p className="text-slate-400">加载中…</p>
+  if (!p) return <p className="text-slate-400">Loading…</p>
   const prev = history[0]
 
   return (
     <div className="space-y-4">
-      {/* 题目头 */}
+      {/* problem header */}
       <div className="card">
         <div className="flex items-start gap-3">
           <div className="flex-1">
             <h1 className="text-lg font-semibold">{p.number}. {p.title}</h1>
             <p className="text-sm text-slate-500 mt-0.5">
               {p.difficulty} · {p.chapter}
-              {p.state && <> · 复习过 {p.state.total_attempts} 次
-                {p.state.lapses > 0 && <span className="text-orange-600"> · 翻车 {p.state.lapses} 次</span>}</>}
+              {p.state && <> · {p.state.total_attempts} attempts
+                {p.state.lapses > 0 && <span className="text-orange-600"> · failed {p.state.lapses}x</span>}</>}
             </p>
           </div>
-          {p.url && <a href={p.url} target="_blank" rel="noreferrer" className="btn">去 NeetCode ↗</a>}
+          {p.url && <a href={p.url} target="_blank" rel="noreferrer" className="btn">Open on NeetCode ↗</a>}
         </div>
         {p.notes && (
           <details className="mt-3">
-            <summary className="text-sm text-slate-500 cursor-pointer">💡 我之前的思路(想不出来再点开)</summary>
+            <summary className="text-sm text-slate-500 cursor-pointer">
+              💡 My earlier notes (open only if you're stuck)
+            </summary>
             <pre className="mt-2 text-sm bg-slate-50 rounded-lg p-3 whitespace-pre-wrap">{p.notes}</pre>
           </details>
         )}
       </div>
 
-      {/* 计时器 */}
+      {/* timer */}
       <div className="card flex items-center gap-4">
         <Timer running={timer.running} seconds={timer.seconds} onTick={timer.onTick} />
         <div className="flex gap-2">
           {!timer.running
-            ? <button className="btn btn-primary" onClick={timer.start}>▶ 开始</button>
-            : <button className="btn" onClick={stopAndSuggest}>⏸ 停止并评分</button>}
-          <button className="btn" onClick={timer.reset}>重置</button>
+            ? <button className="btn btn-primary" onClick={timer.start}>▶ Start</button>
+            : <button className="btn" onClick={stopAndSuggest}>⏸ Stop &amp; grade</button>}
+          <button className="btn" onClick={timer.reset}>Reset</button>
         </div>
         {p.state?.best_seconds && (
-          <span className="text-xs text-slate-400 ml-auto">最快纪录 {formatTime(p.state.best_seconds)}</span>
+          <span className="text-xs text-slate-400 ml-auto">best {formatTime(p.state.best_seconds)}</span>
         )}
       </div>
 
-      {/* 代码 */}
+      {/* code */}
       <div className="card">
         <div className="flex items-center mb-2">
-          <h2 className="font-medium">代码</h2>
+          <h2 className="font-medium">Solution</h2>
           <button className="btn ml-auto text-xs" onClick={runAiReview} disabled={busy || !code.trim()}>
             🤖 AI Review
           </button>
@@ -116,7 +118,7 @@ export default function Solve() {
         <textarea
           value={code}
           onChange={(e) => setCode(e.target.value)}
-          placeholder="在这里写你的解法…"
+          placeholder="Write your solution here…"
           className="w-full h-64 font-mono text-sm p-3 rounded-lg border border-slate-200
                      focus:outline-none focus:ring-2 focus:ring-slate-300"
           spellCheck={false}
@@ -134,59 +136,66 @@ export default function Solve() {
         {prev?.code && prev.code !== code && (
           <details className="mt-3">
             <summary className="text-sm text-slate-500 cursor-pointer">
-              📜 上次的写法({new Date(prev.created_at).toLocaleDateString()},{prev.grade})
+              📜 Last time ({new Date(prev.created_at).toLocaleDateString()}, {prev.grade})
             </summary>
             <pre className="mt-2 text-xs bg-slate-50 rounded-lg p-3 overflow-x-auto">{prev.code}</pre>
           </details>
         )}
       </div>
 
-      {/* 评分 */}
+      {/* grading */}
       <div className="card space-y-3">
         <div className="flex items-center gap-4">
-          <h2 className="font-medium">这次表现</h2>
+          <h2 className="font-medium">How did it go</h2>
           <label className="text-sm flex items-center gap-1.5">
             <input type="checkbox" checked={lookedAtSolution} onChange={(e) => setLooked(e.target.checked)} />
-            看了答案
+            looked at the solution
           </label>
           <label className="text-sm flex items-center gap-1.5">
             <input type="checkbox" checked={hadBugs} onChange={(e) => setHadBugs(e.target.checked)} />
-            提交前有 bug
+            had bugs before it passed
           </label>
         </div>
         <GradeBar value={grade} onChange={setGrade} />
-        {suggestion && <p className="text-xs text-slate-500">🕐 根据用时推荐:{suggestion}</p>}
+        {suggestion && <p className="text-xs text-slate-500">🕐 Suggested from your time: {suggestion}</p>}
 
         <div>
-          <p className="text-sm font-medium mb-1.5">犯了什么错?<span className="text-xs text-slate-400 ml-1">(攒够数据会生成你的个人自查清单)</span></p>
+          <p className="text-sm font-medium mb-1.5">
+            What went wrong?
+            <span className="text-xs text-slate-400 ml-1">
+              (enough of these become your personal pre-submit checklist)
+            </span>
+          </p>
           <MistakePicker selected={mistakes} onChange={setMistakes} />
         </div>
 
         <input
           value={note} onChange={(e) => setNote(e.target.value)}
-          placeholder="一句话:为什么卡住 / 关键是什么"
+          placeholder="One line: where you got stuck, or the key insight"
           className="w-full text-sm p-2 rounded-lg border border-slate-200"
         />
 
         {result ? (
           <div className="rounded-lg bg-emerald-50 border border-emerald-200 p-3 text-sm text-emerald-900">
-            ✅ 已记录 —— <b>{result.days}</b> 天后再复习这道题。
-            <Link to="/" className="underline ml-2">回今日队列</Link>
+            ✅ Recorded — this one comes back in <b>{result.days}</b> day{result.days === 1 ? '' : 's'}.
+            <Link to="/" className="underline ml-2">Back to today</Link>
           </div>
         ) : (
           <button className="btn btn-primary w-full" onClick={submit} disabled={!grade || busy}>
-            {busy ? '提交中…' : '提交并安排下次复习'}
+            {busy ? 'Submitting…' : 'Submit and schedule the next review'}
           </button>
         )}
       </div>
 
       {history.length > 0 && (
         <div className="card">
-          <h2 className="font-medium mb-2">历史记录</h2>
+          <h2 className="font-medium mb-2">History</h2>
           <div className="space-y-1 text-sm">
             {history.map((a) => (
               <div key={a.id} className="flex items-center gap-3 text-slate-600">
-                <span className="text-xs text-slate-400 w-24">{new Date(a.created_at).toLocaleDateString()}</span>
+                <span className="text-xs text-slate-400 w-24">
+                  {new Date(a.created_at).toLocaleDateString()}
+                </span>
                 <span className="w-12">{a.grade}</span>
                 <span className="w-16 font-mono text-xs">{formatTime(a.seconds)}</span>
                 <span className="flex-1 truncate text-xs">{a.note}</span>

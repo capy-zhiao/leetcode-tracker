@@ -1,11 +1,11 @@
-// 四个评分按钮。选中的那个高亮。
+// The four grade buttons. The selected one is highlighted.
 import type { Grade } from '../lib/types'
 
 const GRADES: { id: Grade; label: string; sub: string; color: string }[] = [
-  { id: 'again', label: '😵 不会',  sub: '看了答案',      color: 'bg-red-100 border-red-300 text-red-900' },
-  { id: 'hard',  label: '😓 吃力',  sub: '卡壳或有 bug',  color: 'bg-amber-100 border-amber-300 text-amber-900' },
-  { id: 'good',  label: '🙂 会了',  sub: '顺利做出',      color: 'bg-emerald-100 border-emerald-300 text-emerald-900' },
-  { id: 'easy',  label: '😎 秒杀',  sub: '一遍过',        color: 'bg-sky-100 border-sky-300 text-sky-900' },
+  { id: 'again', label: '😵 Again', sub: 'saw the solution',  color: 'bg-red-100 border-red-300 text-red-900' },
+  { id: 'hard',  label: '😓 Hard',  sub: 'struggled / bugs',  color: 'bg-amber-100 border-amber-300 text-amber-900' },
+  { id: 'good',  label: '🙂 Good',  sub: 'solved smoothly',   color: 'bg-emerald-100 border-emerald-300 text-emerald-900' },
+  { id: 'easy',  label: '😎 Easy',  sub: 'first try, fast',   color: 'bg-sky-100 border-sky-300 text-sky-900' },
 ]
 
 export default function GradeBar({

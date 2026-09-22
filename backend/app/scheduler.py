@@ -1,17 +1,18 @@
-"""每日队列生成。
+"""Builds the daily queue.
 
-每天给你三样东西(结构照搬你手工维护的 REVIEW.md,但自动算):
-  1. 到期复习 —— SRS 说今天该复习的,按 priority 排序后取前 N 道
-  2. 新题     —— 按 NeetCode roadmap 顺序(章节 -> 题号)往下推
-  3. 模板盲写 —— 15 个算法模板,同样走 SRS
+Every day you get three things:
+  1. Due reviews  — what SRS says is due, ranked by priority(), capped at N
+  2. New problems — the next items in NeetCode roadmap order (chapter, then number)
+  3. A template   — one of the 15 algorithm templates, also on an SRS schedule
 
-关键设计:**溢出顺延**。某天可能 20 道同时到期,但你做不完 20 道。
-所以不是「全给你」,而是「按优先级给你最该做的 N 道」,剩下的自动顺延到明天。
+Key design decision: **overflow defers**. Twenty problems may be due on a day you can only
+finish four. Rather than dumping all twenty, the queue hands you the N that matter most and
+rolls the rest forward.
 """
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from datetime import date
+from datetime import date, timedelta
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session, selectinload
@@ -34,8 +35,8 @@ class DailyQueue:
     reviews: list[QueueItem] = field(default_factory=list)
     new_problems: list[QueueItem] = field(default_factory=list)
     templates: list[QueueItem] = field(default_factory=list)
-    total_due: int = 0          # 今天实际到期多少道(可能 > len(reviews))
-    deferred: int = 0           # 因为超上限被顺延的道数
+    total_due: int = 0          # how many are actually due (can exceed len(reviews))
+    deferred: int = 0           # how many were pushed to a later day by the cap
 
 
 def _load(db: Session, kind: str) -> list[Problem]:
@@ -60,7 +61,7 @@ def build_today(
     problems = _load(db, "problem")
     queue = DailyQueue()
 
-    # --- 1. 到期复习:按优先级排,取前 N ---
+    # --- 1. Due reviews, ranked, capped ---
     due_items: list[QueueItem] = []
     for p in problems:
         st = p.state
@@ -78,19 +79,18 @@ def build_today(
     queue.reviews = due_items[:review_cap]
     queue.deferred = max(0, len(due_items) - review_cap)
 
-    # --- 2. 新题:没做过的,按 roadmap 顺序 ---
+    # --- 2. New problems, in roadmap order ---
     fresh = [p for p in problems if p.state is None or p.state.due is None]
     fresh.sort(key=lambda p: (p.chapter_num, p.number))
     queue.new_problems = [QueueItem(problem=p, reason="new") for p in fresh[:new_cap]]
 
-    # --- 3. 模板盲写:到期的取 1 个,没到期的就轮一个最久没写的 ---
+    # --- 3. One template: the due one, otherwise whichever has gone longest untouched ---
     templates = _load(db, "template")
     t_due = [t for t in templates if t.state and t.state.due and t.state.due <= today]
     if t_due:
         t_due.sort(key=lambda t: (t.state.due, -t.state.lapses))
         pick = t_due[0]
     elif templates:
-        # 没到期的话挑一个「最久没碰」的保温
         pick = min(templates, key=lambda t: (
             t.state.last_attempt_at if t.state and t.state.last_attempt_at else 0,
         ))
@@ -103,9 +103,7 @@ def build_today(
 
 
 def forecast(db: Session, today: date | None = None, days: int = 14) -> list[dict]:
-    """未来 N 天的复习负载预测 —— 前端画个小柱状图,让你知道哪天会爆。"""
-    from datetime import timedelta
-
+    """Review load for the next N days, so the UI can warn you before a pile-up."""
     today = today or date.today()
     counts = {today + timedelta(days=i): 0 for i in range(days)}
     overdue = 0

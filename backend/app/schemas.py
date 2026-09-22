@@ -1,4 +1,7 @@
-"""API 的请求/响应格式(Pydantic v2)。和 ORM 模型分开,这样内部表结构变了不会直接影响 API。"""
+"""Request/response shapes (Pydantic v2).
+
+Deliberately separate from the ORM models so internal schema changes don't leak into the API.
+"""
 from __future__ import annotations
 
 from datetime import date, datetime
@@ -56,7 +59,7 @@ class DailyQueueOut(BaseModel):
 
 
 class AttemptIn(BaseModel):
-    """提交一次做题记录。"""
+    """Payload for recording one attempt."""
     grade: Grade
     seconds: int = Field(0, ge=0)
     looked_at_solution: bool = False
@@ -81,7 +84,7 @@ class AttemptOut(BaseModel):
 
 
 class AttemptResult(BaseModel):
-    """提交后返回:新的 SRS 状态 + 下次复习时间,前端直接显示「N 天后再见」。"""
+    """Returned after submitting: the new SRS state plus when this problem comes back."""
     attempt: AttemptOut
     state: StateOut
     next_due_in_days: int
@@ -105,7 +108,7 @@ class ChapterStat(BaseModel):
     chapter: str
     total: int
     started: int
-    mastered: int          # interval >= 21 天视为掌握
+    mastered: int          # interval >= 21 days counts as mastered
 
 
 class StatsOut(BaseModel):

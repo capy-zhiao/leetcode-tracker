@@ -1,5 +1,5 @@
-// 和后端 schemas.py 一一对应。TypeScript 的类型只在编译期存在,
-// 作用是让编辑器帮你catch「拼错字段名」这类错误。
+// Mirrors the backend's schemas.py. TypeScript types exist only at compile time —
+// their job is to let the editor catch typos in field names before you run anything.
 
 export type Grade = 'again' | 'hard' | 'good' | 'easy'
 export type Difficulty = 'Easy' | 'Medium' | 'Hard'

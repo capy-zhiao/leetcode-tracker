@@ -1,12 +1,11 @@
-// 统一的后端调用封装。所有网络请求都走这里,好处是:
-//   - 出错处理只写一次
-//   - 以后加 API Key / 换 base URL 只改这一个文件
+// Single place every network call goes through, so error handling lives in one spot and
+// swapping the base URL or adding an API key is a one-file change.
 import type {
   Attempt, AttemptIn, AttemptResult, CodeReview, DailyQueue,
   FollowUp, MistakeTag, MockStart, Problem, ProblemDetail, Stats,
 } from './types'
 
-// vite.config.ts 里配了代理:/api/xxx -> http://localhost:8000/xxx
+// vite.config.ts proxies /api/* to http://localhost:8000/* during development
 const BASE = '/api'
 const API_KEY = import.meta.env.VITE_API_KEY ?? ''
 
@@ -21,7 +20,7 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   })
   if (!res.ok) {
     const detail = await res.json().catch(() => ({}))
-    throw new Error(detail.detail ?? `请求失败 (${res.status})`)
+    throw new Error(detail.detail ?? `Request failed (${res.status})`)
   }
   return res.json() as Promise<T>
 }
@@ -36,9 +35,9 @@ const qs = (params: Record<string, unknown>) => {
 }
 
 export const api = {
-  health: () => request<{ status: string; llm_enabled: boolean }>('/health'),
+  health: () => request<{ status: string; llm_enabled: boolean; llm_provider: string }>('/health'),
 
-  // --- 每日队列 / 做题 ---
+  // --- daily queue and attempts ---
   today: (caps?: { review_cap?: number; new_cap?: number }) =>
     request<DailyQueue>(`/review/today${qs(caps ?? {})}`),
   forecast: (days = 14) =>
@@ -51,7 +50,7 @@ export const api = {
     }),
   attempts: (number: number) => request<Attempt[]>(`/review/${number}/attempts`),
 
-  // --- 题库 ---
+  // --- problem library ---
   problems: (f?: { chapter?: number; difficulty?: string; status?: string; q?: string; kind?: string }) =>
     request<Problem[]>(`/problems${qs(f ?? {})}`),
   problem: (number: number) => request<ProblemDetail>(`/problems/${number}`),
@@ -59,11 +58,11 @@ export const api = {
     request<ProblemDetail>(`/problems/${number}`, { method: 'PATCH', body: JSON.stringify(body) }),
   mistakeTags: () => request<MistakeTag[]>('/problems/mistake-tags'),
 
-  // --- 统计 ---
+  // --- stats ---
   stats: () => request<Stats>('/stats'),
   heatmap: (days = 90) => request<{ date: string; count: number }[]>(`/stats/heatmap${qs({ days })}`),
 
-  // --- Mock interview ---
+  // --- mock interview ---
   mockStart: (f?: { difficulty?: string; chapter?: number; only_solved?: boolean }) =>
     request<MockStart>(`/mock/start${qs(f ?? {})}`, { method: 'POST' }),
   followups: (number: number, regenerate = false) =>

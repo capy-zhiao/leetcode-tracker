@@ -1,4 +1,7 @@
-"""SRS 算法单元测试。纯函数没有 DB 依赖,所以能这么干净地测。"""
+"""Unit tests for the SRS algorithm.
+
+These are this clean precisely because srs.py is pure: no database, no clock.
+"""
 from datetime import date, timedelta
 
 import pytest
@@ -12,7 +15,7 @@ TODAY = date(2026, 1, 1)
 NEW = SrsState()
 
 
-# ---------- 首次复习 ----------
+# ---------- first review ----------
 @pytest.mark.parametrize("grade,expected_days", [
     ("again", 1), ("hard", 2), ("good", 4), ("easy", 7),
 ])
@@ -22,23 +25,23 @@ def test_first_review_intervals(grade, expected_days):
     assert s.due == TODAY + timedelta(days=expected_days)
 
 
-def test_first_review_hard_problem_gets_shorter_interval():
-    """Hard 题忘得快,间隔要打折"""
+def test_harder_problems_get_shorter_intervals():
+    """Hard problems decay faster, so their gaps are compressed."""
     med = review(NEW, "good", "Medium", TODAY)
     hard = review(NEW, "good", "Hard", TODAY)
     easy = review(NEW, "good", "Easy", TODAY)
     assert hard.interval_days < med.interval_days < easy.interval_days
 
 
-# ---------- 间隔增长 ----------
+# ---------- interval growth ----------
 def test_interval_grows_with_repeated_good():
     s = NEW
     intervals = []
     for _ in range(5):
         s = review(s, "good", "Medium", TODAY)
         intervals.append(s.interval_days)
-    assert intervals == sorted(intervals), "间隔应该单调不减"
-    assert intervals[-1] > intervals[0] * 3, "连续答对后间隔要明显拉开"
+    assert intervals == sorted(intervals), "intervals must be non-decreasing"
+    assert intervals[-1] > intervals[0] * 3, "repeated successes should stretch the gap"
 
 
 def test_easy_grows_faster_than_good():
@@ -53,7 +56,7 @@ def test_hard_barely_grows():
     assert warm.interval_days <= hard.interval_days <= warm.interval_days * 1.5
 
 
-# ---------- 翻车 ----------
+# ---------- lapses ----------
 def test_again_resets_interval_and_counts_lapse():
     s = NEW
     for _ in range(4):
@@ -61,7 +64,7 @@ def test_again_resets_interval_and_counts_lapse():
     assert s.interval_days > 10
 
     s2 = review(s, "again", "Medium", TODAY)
-    assert s2.interval_days == 1, "翻车后明天必须再来"
+    assert s2.interval_days == 1, "a lapse must bring it back tomorrow"
     assert s2.reps == 0
     assert s2.lapses == s.lapses + 1
     assert s2.ease < s.ease
@@ -86,7 +89,7 @@ def test_interval_capped_at_one_year():
     assert s.interval_days <= 365
 
 
-# ---------- 评分推荐 ----------
+# ---------- grade suggestion ----------
 def test_suggest_grade_from_timer():
     assert suggest_grade(60, looked_at_solution=True) == "again"
     assert suggest_grade(3 * 60, looked_at_solution=False) == "easy"
@@ -96,12 +99,12 @@ def test_suggest_grade_from_timer():
 
 
 def test_suggest_grade_scales_with_difficulty():
-    """20 分钟做完 Hard 题算顺利,做完 Easy 题就是卡了"""
+    """Twenty minutes is fine on a Hard problem and slow on an Easy one."""
     assert suggest_grade(20 * 60, False, difficulty="Hard") == "good"
     assert suggest_grade(20 * 60, False, difficulty="Easy") == "hard"
 
 
-# ---------- 优先级 ----------
+# ---------- priority ----------
 def test_priority_prefers_overdue_and_lapsed():
     due_today = SrsState(interval_days=5, due=TODAY)
     overdue = SrsState(interval_days=5, due=TODAY - timedelta(days=7))
@@ -123,9 +126,10 @@ def test_never_scheduled_is_not_due():
     assert not is_due(SrsState(due=TODAY + timedelta(days=1)), TODAY)
 
 
-# ---------- 真实场景回归 ----------
-def test_zhiao_rotting_oranges_scenario():
-    """994 烂橘子:返工 3 版(连续 again),之后逐步做顺 —— 间隔应该爬得比没翻过车的慢"""
+# ---------- regression against a real scenario ----------
+def test_troubled_problem_stays_in_rotation_longer():
+    """A problem failed three times before finally clicking should still come back sooner,
+    and rank higher, than one that always went smoothly."""
     troubled = NEW
     for _ in range(3):
         troubled = review(troubled, "again", "Medium", TODAY)
@@ -138,4 +142,4 @@ def test_zhiao_rotting_oranges_scenario():
 
     assert troubled.interval_days < smooth.interval_days
     assert troubled.lapses == 3
-    assert priority(troubled, TODAY) > priority(smooth, TODAY), "翻过车的题要优先复习"
+    assert priority(troubled, TODAY) > priority(smooth, TODAY)

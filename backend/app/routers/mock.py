@@ -1,6 +1,7 @@
-"""Mock interview:随机抽题 + 计时 + 面试官追问 + AI code review。
+"""Mock interview: random problem, timer, interviewer follow-ups, AI code review.
 
-Follow-up 由 Claude 生成并缓存进 DB —— 同一道题只调一次 API。
+Follow-ups are generated once by the configured LLM and cached in the database,
+so each problem costs a single API call for its lifetime.
 """
 import random
 
@@ -18,15 +19,25 @@ router = APIRouter(prefix="/mock", tags=["mock"])
 
 DEFAULT_MINUTES = {"Easy": 20, "Medium": 35, "Hard": 45}
 
+# Used when no LLM provider is configured, so the feature still works offline.
+GENERIC_FOLLOWUPS = [
+    ("What is the time and space complexity of your solution? Can it be improved?",
+     "State where the current complexity comes from, then identify the bottleneck step."),
+    ("What are the edge cases? Empty input, a single element, all elements identical?",
+     "Name two or three concrete inputs and say what each should return."),
+    ("If the input grew to a billion elements, would your approach still hold?",
+     "Discuss memory limits, streaming, sharding, or an external-sort style approach."),
+]
+
 
 @router.post("/start", response_model=MockStartOut)
 def start_mock(
     db: Session = Depends(get_db),
-    difficulty: str | None = Query(None, description="限定难度"),
-    chapter: int | None = Query(None, description="限定章节"),
-    only_solved: bool = Query(False, description="只抽做过的题(练讲解),默认全库"),
+    difficulty: str | None = Query(None, description="Restrict to a difficulty"),
+    chapter: int | None = Query(None, description="Restrict to a chapter"),
+    only_solved: bool = Query(False, description="Only draw problems you have solved before"),
 ):
-    """随机抽一道题开始模拟面试。"""
+    """Draw a random problem and start a mock interview."""
     stmt = select(Problem).options(selectinload(Problem.state)).where(Problem.kind == "problem")
     if difficulty:
         stmt = stmt.where(Problem.difficulty == difficulty)
@@ -37,7 +48,7 @@ def start_mock(
     if only_solved:
         pool = [p for p in pool if p.state and p.state.due]
     if not pool:
-        raise HTTPException(404, "没有符合条件的题目")
+        raise HTTPException(404, "No problems match those filters")
 
     p = random.choice(pool)
     return MockStartOut(
@@ -53,7 +64,7 @@ def get_followups(
     db: Session = Depends(get_db),
     regenerate: bool = Query(False),
 ):
-    """拿这道题的面试官追问。首次调用时用 Claude 生成并缓存。"""
+    """Fetch follow-ups for a problem, generating and caching them on first request."""
     if problem.followups and not regenerate:
         return problem.followups
 
@@ -66,15 +77,8 @@ def get_followups(
         problem.title, problem.number, problem.difficulty, problem.chapter
     )
     if not items:
-        # 没配 API key 或调用失败 —— 给一套通用追问兜底,功能不中断
-        items = [
-            llm.FollowUpItem(question="你的解法时间/空间复杂度是多少?能再优化吗?",
-                             hint="先说清当前复杂度的来源,再讨论瓶颈在哪一步"),
-            llm.FollowUpItem(question="有哪些边界情况?空输入、单元素、全部相同怎么处理?",
-                             hint="当场举 2-3 个具体输入,说出各自的预期输出"),
-            llm.FollowUpItem(question="如果输入规模变成 10 亿,你的方案还成立吗?",
-                             hint="讨论内存约束、流式处理、分片或外部排序"),
-        ]
+        # No provider configured, or the call failed — fall back so the flow never breaks
+        items = [llm.FollowUpItem(question=q, hint=h) for q, h in GENERIC_FOLLOWUPS]
 
     rows = [FollowUp(problem_id=problem.id, question=i.question, hint=i.hint) for i in items]
     db.add_all(rows)
@@ -89,16 +93,16 @@ def ai_code_review(
     payload: dict,
     problem: Problem = Depends(get_problem),
 ):
-    """把代码交给 Claude 审一遍,顺便让它猜你犯了哪些错误标签。"""
+    """Send the solution to the configured LLM for review, including which mistake tags apply."""
     code = (payload or {}).get("code", "")
     if not code.strip():
-        raise HTTPException(400, "代码不能为空")
+        raise HTTPException(400, "Code cannot be empty")
     if not llm.is_enabled():
-        raise HTTPException(503, "未配置 ANTHROPIC_API_KEY,AI review 不可用")
+        raise HTTPException(503, "AI review unavailable — set LLM_PROVIDER and the matching API key")
 
     result = llm.review_code(problem.title, problem.number, problem.difficulty, code)
     if result is None:
-        raise HTTPException(502, "调用 Claude 失败,请稍后再试")
+        raise HTTPException(502, "The LLM call failed, please try again")
     return CodeReviewOut(
         summary=result.summary,
         issues=result.issues,

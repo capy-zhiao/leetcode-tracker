@@ -1,4 +1,4 @@
-"""集中管理配置。所有值都能被 .env 或环境变量覆盖。"""
+"""Central configuration. Every value can be overridden via .env or environment vars."""
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -6,10 +6,18 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
     database_url: str = "sqlite:///./tracker.db"
+
+    # LLM provider: "none" | "anthropic" | "deepseek"
+    llm_provider: str = "none"
     anthropic_api_key: str = ""
-    api_key: str = ""                 # 留空 = 不校验(本地开发)
-    daily_review_cap: int = 4         # 每天最多复习几道
-    daily_new_cap: int = 3            # 每天最多做几道新题
+    anthropic_model: str = "claude-opus-5"
+    deepseek_api_key: str = ""
+    deepseek_model: str = "deepseek-flash"
+    deepseek_base_url: str = "https://api.deepseek.com"
+
+    api_key: str = ""                 # empty = no auth (local dev)
+    daily_review_cap: int = 4         # max reviews per day
+    daily_new_cap: int = 3            # max new problems per day
     cors_origins: str = "http://localhost:5173,http://127.0.0.1:5173"
 
     @property

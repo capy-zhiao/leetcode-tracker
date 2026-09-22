@@ -1,4 +1,4 @@
-"""测试夹具:每个测试用独立的内存数据库,互不污染。"""
+"""Test fixtures: each test gets its own in-memory database."""
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
@@ -13,9 +13,9 @@ from app.models import Problem, ReviewState
 @pytest.fixture
 def db_session():
     engine = create_engine(
-        "sqlite://",                       # 内存库
+        "sqlite://",                       # in-memory
         connect_args={"check_same_thread": False},
-        poolclass=StaticPool,              # 让多个连接共享同一个内存库
+        poolclass=StaticPool,              # share one database across connections
     )
     Base.metadata.create_all(bind=engine)
     Session = sessionmaker(bind=engine, autoflush=False)
@@ -36,7 +36,7 @@ def client(db_session):
 
 @pytest.fixture
 def sample_problems(db_session):
-    """三道题:一道没做过,两道已解待复习。"""
+    """Three problems: one never attempted, two solved and due for review."""
     from datetime import date, timedelta
     today = date.today()
     rows = [
@@ -49,7 +49,7 @@ def sample_problems(db_session):
     ]
     db_session.add_all(rows)
     db_session.flush()
-    # 994 逾期 5 天且翻过 3 次车 -> 优先级应该最高
+    # 994 is five days overdue and has failed three times -> highest priority
     db_session.add(ReviewState(problem_id=rows[1].id, interval_days=2, reps=1,
                                lapses=3, due=today - timedelta(days=5)))
     db_session.add(ReviewState(problem_id=rows[2].id, interval_days=4, reps=2,

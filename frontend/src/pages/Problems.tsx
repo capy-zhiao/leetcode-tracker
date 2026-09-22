@@ -1,4 +1,4 @@
-// 题库浏览:按章节/难度/状态筛选,搜索
+// Problem library: filter by chapter, difficulty and status; search by title or number.
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { api } from '../lib/api'
@@ -17,12 +17,11 @@ export default function Problems() {
   const [status, setStatus] = useState('')
   const [kind, setKind] = useState('problem')
 
-  // 依赖数组里的值一变就重新拉数据 —— 筛选条件改了自动刷新
+  // Anything in the dependency array re-triggers the fetch, so filters refresh automatically
   useEffect(() => {
     api.problems({ q, difficulty, status, kind }).then(setItems).catch(() => {})
   }, [q, difficulty, status, kind])
 
-  // 按章节分组显示
   const groups = items.reduce<Record<string, Problem[]>>((acc, p) => {
     const key = `${p.chapter_num}. ${p.chapter}`
     ;(acc[key] ??= []).push(p)
@@ -34,30 +33,32 @@ export default function Problems() {
       <div className="card flex flex-wrap gap-2 items-center">
         <input
           value={q} onChange={(e) => setQ(e.target.value)}
-          placeholder="搜索题号或标题…"
+          placeholder="Search by number or title…"
           className="flex-1 min-w-48 text-sm p-2 rounded-lg border border-slate-200"
         />
         <select value={difficulty} onChange={(e) => setDifficulty(e.target.value)} className="btn">
-          <option value="">全部难度</option>
+          <option value="">All difficulties</option>
           <option>Easy</option><option>Medium</option><option>Hard</option>
         </select>
         <select value={status} onChange={(e) => setStatus(e.target.value)} className="btn">
-          <option value="">全部状态</option>
-          <option value="new">没做过</option>
-          <option value="learning">复习中</option>
-          <option value="mastered">已掌握</option>
+          <option value="">All statuses</option>
+          <option value="new">Not started</option>
+          <option value="learning">In review</option>
+          <option value="mastered">Mastered</option>
         </select>
         <select value={kind} onChange={(e) => setKind(e.target.value)} className="btn">
-          <option value="problem">题目</option>
-          <option value="template">模板</option>
+          <option value="problem">Problems</option>
+          <option value="template">Templates</option>
         </select>
       </div>
 
-      <p className="text-sm text-slate-500">共 {items.length} 道</p>
+      <p className="text-sm text-slate-500">{items.length} total</p>
 
       {Object.entries(groups).map(([chapter, list]) => (
         <section key={chapter} className="card">
-          <h2 className="font-medium mb-2">{chapter} <span className="text-sm text-slate-400">({list.length})</span></h2>
+          <h2 className="font-medium mb-2">
+            {chapter} <span className="text-sm text-slate-400">({list.length})</span>
+          </h2>
           <div className="-mx-1">
             {list.map((p) => (
               <Link key={p.id} to={`/solve/${p.number}`}
@@ -68,9 +69,9 @@ export default function Problems() {
                 {!p.in_neetcode150 && <span className="chip bg-purple-50 text-purple-600">250</span>}
                 {p.state?.due
                   ? <span className="text-xs text-slate-400">
-                      间隔 {p.state.interval_days}d{p.state.lapses > 0 && ` · ✗${p.state.lapses}`}
+                      {p.state.interval_days}d interval{p.state.lapses > 0 && ` · ✗${p.state.lapses}`}
                     </span>
-                  : <span className="text-xs text-slate-300">未开始</span>}
+                  : <span className="text-xs text-slate-300">not started</span>}
               </Link>
             ))}
           </div>

@@ -1,8 +1,7 @@
-"""
-把 neetcode 笔记仓库的 markdown 抽成 seed.json,供 app 后端导入。
+"""Extract the NeetCode markdown notes into seed.json for the backend to import.
 
-用法: python3 scripts/extract_seed.py
-输出: data/seed.json
+Usage:  python3 scripts/extract_seed.py
+Output: data/seed.json
 """
 import json, re, glob, os, urllib.request
 
@@ -23,18 +22,21 @@ DIFF_MAP = {"🟢": "Easy", "🟡": "Medium", "🔴": "Hard"}
 
 
 def fetch_nc250_difficulty():
-    """从官方 250 清单取难度,用题目名做 key(markdown 表格没覆盖增补题)。"""
+    """Pull difficulty from the official 250 list, keyed by title.
+
+    The per-chapter markdown tables do not cover the problems appended later.
+    """
     try:
         with urllib.request.urlopen(NC250_URL, timeout=20) as r:
             data = json.loads(r.read())
         return {p["name"].strip().lower(): p["difficulty"] for p in data["problems"]}
     except Exception as e:
-        print(f"  ⚠️  拉取 nc250 难度失败({e}),只用 markdown 表格里的难度")
+        print(f"  warning: could not fetch the nc250 list ({e}); using markdown tables only")
         return {}
 
 
 def parse_difficulty_table(text):
-    """解析章节顶部的题目清单表 -> {题号: 难度}"""
+    """Parse the problem table at the top of a chapter file -> {number: difficulty}."""
     out = {}
     for line in text.splitlines():
         if not line.startswith("|"):
@@ -46,16 +48,21 @@ def parse_difficulty_table(text):
 
 
 def parse_sections(text):
-    """切出每道题的 section: (题号, 标题, 正文)"""
-    # 以 '## 数字. 标题' 为界切分
+    """Split the file into per-problem sections: (number, title, body)."""
+    # Split on '## <number>. <title>' headings
     parts = re.split(r"^## (\d+)\.\s*(.+?)\s*$", text, flags=re.M)
-    # parts = [前言, 号, 标题, 正文, 号, 标题, 正文, ...]
+    # parts = [preamble, num, title, body, num, title, body, ...]
     for i in range(1, len(parts), 3):
         yield int(parts[i]), parts[i + 1].strip(), parts[i + 2]
 
 
+# The source markdown notes use Chinese section labels, so the parser matches those
+# literals. They are data, not UI text, and must stay as-is for extraction to work.
+LABEL_APPROACH, LABEL_CODE, PLACEHOLDER = "思路", "代码", "待补充"
+
+
 def extract_block(body, label):
-    """取 '**思路：**' 或 '**代码：**' 后面第一个 ``` 代码块的内容"""
+    """Grab the first fenced block following the given label heading."""
     m = re.search(rf"\*\*{label}：?\*\*\s*\n+```(?:python)?\n(.*?)\n?```", body, re.S)
     return m.group(1).strip() if m else ""
 
@@ -72,18 +79,18 @@ def main():
         is_extra_zone = False
 
         for num, title, body in parse_sections(text):
-            if num in seen:                       # 同题重复出现(150 + 250 区)
+            if num in seen:                       # same problem in both the 150 and 250 sections
                 continue
             link = ""
-            m = re.search(r"\*\*链接：?\*\*\s*(\S+)", body)
+            m = re.search(r"\*\*链接：?\*\*\s*(\S+)", body)   # "link:" label in the notes
             if m:
                 link = m.group(1)
             is_extra_zone = "list=neetcode250" in link
 
-            notes = extract_block(body, "思路")
-            code = extract_block(body, "代码")
-            solved = bool(code) and "待补充" not in code
-            if notes in ("待补充", ""):
+            notes = extract_block(body, LABEL_APPROACH)
+            code = extract_block(body, LABEL_CODE)
+            solved = bool(code) and PLACEHOLDER not in code
+            if notes in (PLACEHOLDER, ""):
                 notes = ""
 
             difficulty = (table_diff.get(num)
@@ -99,8 +106,8 @@ def main():
                 "chapter": CHAPTER_NAMES[ch_num],
                 "url": link,
                 "in_neetcode150": not is_extra_zone,
-                "solved": solved,          # 已写过代码 -> 导入后直接进 SRS 队列
-                "notes": notes,            # 你的思路笔记
+                "solved": solved,          # has code -> enters the SRS queue on import
+                "notes": notes,            # the approach notes written while solving
                 "code": code if solved else "",
             })
 
@@ -111,10 +118,10 @@ def main():
                   f, ensure_ascii=False, indent=2)
 
     solved = sum(p["solved"] for p in problems)
-    print(f"\n✅ 导出 {len(problems)} 题 -> {out_path}")
-    print(f"   已解(带代码): {solved}    待做: {len(problems)-solved}")
-    print(f"   带思路笔记:   {sum(bool(p['notes']) for p in problems)}")
-    print("\n   按章节:")
+    print(f"\nExported {len(problems)} problems -> {out_path}")
+    print(f"  solved (with code): {solved}    remaining: {len(problems)-solved}")
+    print(f"  with notes:         {sum(bool(p['notes']) for p in problems)}")
+    print("\n  by chapter:")
     for ch in sorted({p["chapter_num"] for p in problems}):
         g = [p for p in problems if p["chapter_num"] == ch]
         s = sum(x["solved"] for x in g)

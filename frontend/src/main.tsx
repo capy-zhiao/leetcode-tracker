@@ -1,4 +1,4 @@
-// 整个应用的启动点:把 <App /> 挂到 index.html 里那个 <div id="root">
+// Application entry point: mount <App /> into the <div id="root"> in index.html
 import React from 'react'
 import ReactDOM from 'react-dom/client'
 import { BrowserRouter } from 'react-router-dom'

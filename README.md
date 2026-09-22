@@ -1,130 +1,161 @@
-# 🧠 LeetCode Tracker — 基于记忆曲线的刷题追踪器
+# 🧠 LeetCode Tracker
 
-按**间隔重复(Spaced Repetition)**安排 NeetCode 250 的每日刷题与复习计划,
-自动追踪个人错误模式,并支持带追问的模拟面试。
+A spaced-repetition tracker for the **NeetCode 250**: it decides what to practise each day,
+schedules reviews on a forgetting curve, tracks your personal bug patterns, and runs timed
+mock interviews with LLM-generated follow-up questions.
 
-> 起因:手工维护的 markdown 计划表排不动了 —— 250 道题的复习时间点要靠脑子记,
-> 到期一堆做不完也没有优先级。这个 app 把调度自动化了。
+> Built because a hand-maintained markdown study plan stops scaling at 250 problems —
+> you cannot keep 250 review dates in your head, and when twenty come due at once there is
+> no way to decide which four actually matter.
 
-## ✨ 功能
+## ✨ Features
 
-| 功能 | 说明 |
+| Feature | What it does |
 | --- | --- |
-| **SRS 智能调度** | 每道题按表现动态计算下次复习时间;到期超量时按优先级排序,其余自动顺延 |
-| **每日队列** | 复习 + 新题 + 模板盲写,替代手工计划表 |
-| **计时器 + 自动评分** | 停表后根据用时和难度推荐评分,不靠"感觉" |
-| **错误模式统计** | 15 个错误标签,积累后生成**个人版提交前自查清单** |
-| **代码存档 + diff** | 每次提交的代码都存档,二刷时对比上次写法 |
-| **模拟面试** | 随机抽题 + 限时 + 隐藏笔记 + **面试官追问**(Claude 生成) |
-| **AI Code Review** | 提交代码后由 Claude 审查,并自动推断犯了哪些错误标签 |
+| **Adaptive scheduling** | Each problem's next review is computed from how the attempt actually went. When more is due than you can finish, the queue ranks by priority and defers the rest |
+| **Daily queue** | Reviews + new problems + one template drill, replacing the manual plan |
+| **Timer with auto-grading** | Stops the clock and suggests a grade from your time and the problem's difficulty — no guessing how well you "felt" you did |
+| **Mistake pattern tracking** | 15 tags; once you have some history it ranks them into a **personal pre-submit checklist** |
+| **Solution history & diff** | Every submission is archived, so a second pass can be compared against the first |
+| **Mock interview** | Random problem, countdown, notes hidden, then **interviewer follow-up questions** |
+| **AI code review** | An LLM reviews your solution and infers which mistake tags it exhibits |
 
-## 🏗 技术栈
+## 🏗 Architecture
 
 ```
-React + TypeScript + Vite + Tailwind      前端 SPA
-          ↓ REST
-FastAPI + SQLAlchemy 2.0 + Pydantic v2    后端 API(自动生成 OpenAPI 文档)
-          ↓
-SQLite(开发) / PostgreSQL(生产)
-          ↓
-Anthropic Claude API                       追问生成 + code review(可选)
+React + TypeScript + Vite + Tailwind      SPA frontend
+          | REST
+FastAPI + SQLAlchemy 2.0 + Pydantic v2    backend (auto-generated OpenAPI docs)
+          |
+SQLite (dev) / PostgreSQL (prod)
+          |
+Claude or DeepSeek                        follow-up generation + code review (optional)
 ```
 
-**设计要点:**
+**Design decisions worth calling out:**
 
-- **SRS 算法是纯函数**(`app/srs.py`)—— 不碰数据库、不读系统时钟(`today` 作参数传入),
-  因此能被完整单元测试覆盖。17 个测试用例覆盖首次间隔、增长曲线、翻车重置、
-  ease 边界、优先级排序。
-- **存储层可替换** —— `DATABASE_URL` 一个环境变量在 SQLite / Postgres 间切换,代码零改动。
-- **优雅降级** —— 未配置 `ANTHROPIC_API_KEY` 时,AI 功能返回兜底内容,应用其余部分照常工作。
+- **The scheduling algorithm is a set of pure functions** (`app/srs.py`) — no database access,
+  no clock reads (`today` is a parameter). That is what makes it fully unit-testable: 17 cases
+  cover first intervals, growth curves, lapse resets, ease clamping and priority ordering.
+- **The LLM layer is provider-agnostic** (`app/llm.py`). Claude uses native structured outputs;
+  DeepSeek goes through its OpenAI-compatible endpoint with JSON mode plus Pydantic validation.
+  Adding a third provider means implementing one `complete()` method.
+- **Storage is swappable** — `DATABASE_URL` alone moves you between SQLite and Postgres.
+- **Everything degrades gracefully** — with no LLM configured, AI features return sensible
+  fallbacks and the rest of the app is unaffected.
 
-## 🧮 SRS 算法
+## 🧮 The scheduling algorithm
 
-刷题的记忆曲线和背单词不同:Anki 一张卡 5 秒、一天能过 200 张;
-刷题一道 20-45 分钟、一天顶多 6-8 道。所以做了三处改造:
+Coding problems are not flashcards. An Anki card takes five seconds and you can clear two
+hundred a day; a LeetCode problem takes 20-45 minutes and you can manage six. Three changes
+follow from that:
 
-**1. 评分基于实际表现,不靠自评**
+**1. The grade comes from measured behaviour, not self-assessment**
 
-| 评分 | 触发条件 | 效果 |
+| Grade | Trigger | Effect |
 | --- | --- | --- |
-| `again` 不会 | 看了答案 | 间隔重置为 1 天,`ease -= 0.2`,`lapses++` |
-| `hard` 吃力 | 卡壳 >15min 或有 bug | `interval × 1.2` |
-| `good` 会了 | 顺利(5-15min) | `interval × ease` |
-| `easy` 秒杀 | <5min 一遍过 | `interval × ease × 1.3`,`ease += 0.1` |
+| `again` | looked at the solution | interval resets to 1 day, `ease -= 0.2`, lapse recorded |
+| `hard` | struggled >15 min, or had bugs | `interval x 1.2` |
+| `good` | solved smoothly (5-15 min) | `interval x ease` |
+| `easy` | first try, under 5 min | `interval x ease x 1.3`, `ease += 0.1` |
 
-首次间隔 1/2/4/7 天;`ease ∈ [1.3, 3.0]`,初始 2.3;**Hard 题间隔 ×0.8**(难题忘得快)。
-时间阈值随题目难度缩放 —— 20 分钟做完 Hard 题算顺利,做完 Easy 题就是卡了。
+First intervals are 1/2/4/7 days; `ease` is clamped to `[1.3, 3.0]` starting at 2.3;
+**Hard problems get intervals multiplied by 0.8** because they decay faster. Time thresholds
+scale with difficulty — twenty minutes is fine on a Hard problem and slow on an Easy one.
 
-**2. 每日上限 + 优先级排序**(Anki 没有,但刷题一定会撞上)
+**2. A daily cap with priority ordering** (Anki has no equivalent, but you hit this on day one)
 
 ```
-优先级 = 逾期天数 × 1.0
-       + 历史翻车次数 × 3.0       ← 错过的题优先
-       + 难度权重(Hard 2 / Medium 1 / Easy 0)
-       + (20 − 章节号) × 0.1      ← 先补地基
+priority = days_overdue      x 1.0
+         + lifetime_lapses   x 3.0     <- problems you've failed before surface first
+         + difficulty_weight            (Hard 2 / Medium 1 / Easy 0)
+         + (20 - chapter)    x 0.1     <- foundations before advanced topics
 ```
 
-**3. 新题按 roadmap 推进**,与复习题混排。
+**3. New problems advance in roadmap order** and are interleaved with reviews.
 
-## 🚀 本地运行
+## 🚀 Running it
 
-**一键启动**(推荐):
+**One command:**
 
 ```bash
 ./start.sh
 ```
 
-会自动检查依赖、按需初始化数据库、起前后端、打印今日任务、并打开浏览器。
-按 `Ctrl+C` 停止两个服务。
+It checks dependencies, seeds the database if needed, starts both servers, prints today's
+queue, and opens the browser. `Ctrl+C` stops everything.
 
 <details>
-<summary>或者手动分别启动</summary>
+<summary>Or start the two halves manually</summary>
 
 ```bash
-# 后端
+# backend
 cd backend
 python3 -m venv .venv && ./.venv/bin/pip install -r requirements.txt
-cp .env.example .env                  # 按需填 ANTHROPIC_API_KEY
-./.venv/bin/python seed_db.py         # 导入 250 道题
-./.venv/bin/uvicorn app.main:app --reload
-# API 文档: http://localhost:8000/docs
+cp .env.example .env
+./.venv/bin/python seed_db.py
+./.venv/bin/uvicorn app.main:app --reload     # docs at http://localhost:8000/docs
 
-# 前端(另开一个终端)
+# frontend (second terminal)
 cd frontend
 npm install
-npm run dev                           # http://localhost:5173
+npm run dev                                   # http://localhost:5173
 ```
 
 </details>
 
-运行测试:`cd backend && ./.venv/bin/python -m pytest -q`
+Tests: `cd backend && ./.venv/bin/python -m pytest -q`
 
-## 📥 数据来源
+## 🤖 Enabling the AI features
 
-题库从个人的 NeetCode markdown 笔记仓库抽取:
+Follow-up generation and code review need a provider. Set `LLM_PROVIDER` in `backend/.env`:
 
 ```bash
-python3 scripts/extract_seed.py       # markdown → data/seed.json
+# Option A — Claude: best-quality follow-ups
+LLM_PROVIDER=anthropic
+ANTHROPIC_API_KEY=sk-ant-...
+ANTHROPIC_MODEL=claude-opus-5
+
+# Option B — DeepSeek: roughly 30x cheaper, OpenAI-compatible API
+LLM_PROVIDER=deepseek
+DEEPSEEK_API_KEY=sk-...
+DEEPSEEK_MODEL=deepseek-flash        # or deepseek-v4-pro
+DEEPSEEK_BASE_URL=https://api.deepseek.com
 ```
 
-脚本会保留已写过的**思路笔记和代码**,并把已解题目标记为「立即到期」,
-同时从历史记录中恢复每道题的翻车次数 —— 让第一天的复习队列就有正确的优先级。
-markdown 笔记继续更新后可随时重跑同步。
+Follow-ups are generated once per problem and cached in the database, so building the full
+library for all 250 problems costs roughly **$0.20 on DeepSeek** or **$8 on Claude**, once.
+Leave `LLM_PROVIDER=none` and everything still works with generic fallback questions.
 
-## 🌐 部署
+## 📥 Where the problem data comes from
 
-| 组件 | 平台 | 配置 |
+The library is extracted from a personal NeetCode markdown notes repository:
+
+```bash
+python3 scripts/extract_seed.py       # markdown -> data/seed.json
+```
+
+The extractor preserves existing approach notes and solutions, marks already-solved problems
+as due immediately, and restores per-problem failure counts from the previous study plan —
+so the very first daily queue already has meaningful priorities. Re-run it any time the notes
+change.
+
+## 🌐 Deployment
+
+| Component | Platform | Config |
 | --- | --- | --- |
-| 前端 | Vercel | 根目录 `frontend/`,已含 `vercel.json`(SPA 路由重写) |
-| 后端 | Railway / Render | 根目录 `backend/`,已含 `Procfile` |
-| 数据库 | Railway Postgres / Supabase | 设 `DATABASE_URL`,并 `pip install "psycopg[binary]"` |
+| Frontend | Vercel | root `frontend/`, `vercel.json` handles SPA rewrites |
+| Backend | Railway / Render | root `backend/`, `Procfile` included |
+| Database | Railway Postgres / Supabase | set `DATABASE_URL`, `pip install "psycopg[binary]"` |
 
-公网部署时在后端设 `API_KEY`,前端设 `VITE_API_KEY`,中间件会校验 `X-API-Key` 头。
+For a public deployment set `API_KEY` on the backend and `VITE_API_KEY` on the frontend;
+the middleware then requires a matching `X-API-Key` header.
 
 ## 🗺 Roadmap
 
-- [ ] JWT 用户系统(目前是单用户 + API Key 保护)
-- [ ] 数据库迁移改用 Alembic(目前靠 `create_all`)
-- [ ] 每日邮件提醒(Vercel Cron + Resend)
-- [ ] 代码编辑器换成 Monaco(语法高亮 + 自动缩进)
-- [ ] 按 pattern(滑窗/单调栈/并查集)而非章节的熟练度视图
+- [ ] JWT accounts (currently single-user with optional API-key protection)
+- [ ] Alembic migrations (currently `create_all` on startup)
+- [ ] Daily email reminder (Vercel Cron + Resend)
+- [ ] Monaco editor in place of the plain textarea
+- [ ] Proficiency view grouped by pattern (sliding window, monotonic stack, union-find)
+  rather than by chapter

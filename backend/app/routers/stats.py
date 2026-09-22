@@ -1,4 +1,4 @@
-"""统计看板 —— 其中「错误模式排行」是这个 app 最有个人价值的一块。"""
+"""Stats dashboard. The mistake ranking is the most personally useful part."""
 from collections import Counter
 from datetime import timedelta
 
@@ -14,11 +14,11 @@ from ..schemas import ChapterStat, MistakeStat, StatsOut
 
 router = APIRouter(prefix="/stats", tags=["stats"])
 
-MASTERED_INTERVAL = 21   # 间隔 ≥ 21 天视为「掌握」
+MASTERED_INTERVAL = 21   # an interval of 21+ days counts as "mastered"
 
 
 def _streak(db: Session) -> int:
-    """连续打卡天数:从今天(或昨天)往前数,断了就停。"""
+    """Consecutive days with at least one attempt, counting back from today."""
     days = {
         d for (d,) in db.execute(
             select(func.date(Attempt.created_at)).distinct()
@@ -29,7 +29,7 @@ def _streak(db: Session) -> int:
         return 0
     cur = get_today()
     if cur.isoformat() not in days:
-        cur = cur - timedelta(days=1)      # 今天还没做,从昨天算起
+        cur = cur - timedelta(days=1)      # nothing today yet, so start from yesterday
         if cur.isoformat() not in days:
             return 0
     n = 0
@@ -55,7 +55,6 @@ def overview(db: Session = Depends(get_db)):
     attempts_7d = sum(1 for a in attempts if a.created_at.date() >= week_ago)
     timed = [a.seconds for a in attempts if a.seconds > 0]
 
-    # 按章节
     by_chapter: list[ChapterStat] = []
     for ch in sorted({p.chapter_num for p in problems}):
         g = [p for p in problems if p.chapter_num == ch]
@@ -77,7 +76,7 @@ def overview(db: Session = Depends(get_db)):
 
 @router.get("/mistakes", response_model=list[MistakeStat])
 def mistake_ranking(db: Session = Depends(get_db)) -> list[MistakeStat]:
-    """你的错误模式排行 —— 攒够数据后,这就是你的个人版提交前自查清单。"""
+    """Your mistake ranking — with enough data this becomes a personal pre-submit checklist."""
     counter: Counter[str] = Counter()
     for a in db.scalars(select(Attempt)):
         counter.update(a.mistakes or [])
@@ -95,7 +94,7 @@ def mistake_ranking(db: Session = Depends(get_db)) -> list[MistakeStat]:
 
 @router.get("/heatmap")
 def heatmap(db: Session = Depends(get_db), days: int = 90):
-    """最近 N 天每天做了几道 —— 前端画 GitHub 那种格子图。"""
+    """Attempts per day for the last N days — a GitHub-style contribution grid."""
     start = get_today() - timedelta(days=days)
     counter: Counter[str] = Counter()
     for a in db.scalars(select(Attempt)):

@@ -1,30 +1,34 @@
-"""Claude API 集成:生成面试追问 + 给解法做 code review。
+"""Pluggable LLM layer: generates interview follow-up questions and reviews code.
 
-设计原则:**优雅降级**。没配 ANTHROPIC_API_KEY 时,这些功能返回空/None,
-app 其余部分照常工作 —— 不会因为缺个 key 就起不来。
+Two providers are supported and selected with LLM_PROVIDER:
 
-用的是结构化输出(client.messages.parse + Pydantic),所以拿到的直接是校验过的对象,
-不用自己解析 JSON、不用担心模型多输出一段客套话。
+  anthropic — Claude. Uses native structured outputs (`messages.parse`), so the response
+              is already a validated Pydantic object. Best quality follow-ups.
+  deepseek  — DeepSeek via its OpenAI-compatible API. Roughly 30x cheaper; JSON mode plus
+              manual Pydantic validation, since it has no strict-schema equivalent.
+
+Design principle: **graceful degradation**. With LLM_PROVIDER=none (or a missing key) these
+functions return empty results and the rest of the app keeps working — no hard dependency.
 """
 from __future__ import annotations
 
+import json
 import logging
+from typing import TypeVar
 
-import anthropic
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ValidationError
 
 from .config import settings
 from .constants import MISTAKE_TAGS
 
 log = logging.getLogger(__name__)
+T = TypeVar("T", bound=BaseModel)
 
-MODEL = "claude-opus-5"
 
-
-# ---------- 结构化输出的 schema ----------
+# ---------------------------------------------------------------- schemas
 class FollowUpItem(BaseModel):
-    question: str = Field(description="面试官会问的追问,一句话")
-    hint: str = Field(description="回答要点提示,给自己复盘用,两三句")
+    question: str = Field(description="A follow-up question an interviewer would ask, one sentence")
+    hint: str = Field(description="Key points a good answer should cover, two or three sentences")
 
 
 class FollowUpBundle(BaseModel):
@@ -32,114 +36,201 @@ class FollowUpBundle(BaseModel):
 
 
 class CodeReview(BaseModel):
-    summary: str = Field(description="一两句总评")
-    issues: list[str] = Field(description="具体问题,每条一句话;没问题就空列表")
+    summary: str = Field(description="One or two sentences: is it correct, what is the complexity")
+    issues: list[str] = Field(description="Concrete problems, one sentence each; empty list if none")
     suggested_mistakes: list[str] = Field(
-        description="从给定的错误标签 id 列表里挑出这份代码确实犯了的,没有就空列表"
+        description="IDs from the provided mistake-tag list that this code actually exhibits; empty if none"
     )
 
 
-def _client() -> anthropic.Anthropic | None:
-    if not settings.anthropic_api_key:
+# ---------------------------------------------------------------- providers
+class _Provider:
+    """Common interface so the rest of the app never cares which vendor is behind it."""
+
+    name = "none"
+
+    def complete(self, prompt: str, schema: type[T]) -> T | None:  # pragma: no cover - interface
+        raise NotImplementedError
+
+
+class AnthropicProvider(_Provider):
+    name = "anthropic"
+
+    def __init__(self) -> None:
+        import anthropic
+
+        self._anthropic = anthropic
+        self._client = anthropic.Anthropic(api_key=settings.anthropic_api_key)
+
+    def complete(self, prompt: str, schema: type[T]) -> T | None:
+        a = self._anthropic
+        try:
+            res = self._client.messages.parse(
+                model=settings.anthropic_model,
+                max_tokens=4000,
+                thinking={"type": "adaptive"},
+                messages=[{"role": "user", "content": prompt}],
+                output_format=schema,
+            )
+            return res.parsed_output
+        except a.NotFoundError:
+            log.warning("Anthropic: model not found or not accessible")
+        except a.RateLimitError:
+            log.warning("Anthropic: rate limited, try again later")
+        except a.APIStatusError as e:
+            log.warning("Anthropic: HTTP %s", e.status_code)
+        except a.APIConnectionError:
+            log.warning("Anthropic: could not reach the API")
         return None
-    return anthropic.Anthropic(api_key=settings.anthropic_api_key)
 
 
-def _safe_parse(call, what: str):
-    """统一的错误处理:按「具体 -> 泛化」的顺序接,任何失败都降级成 None。"""
+class DeepSeekProvider(_Provider):
+    """DeepSeek exposes an OpenAI-compatible endpoint, so we use the OpenAI SDK.
+
+    It has JSON mode but no strict schema enforcement, so we embed the JSON schema in the
+    prompt and validate the reply ourselves with Pydantic.
+    """
+
+    name = "deepseek"
+
+    def __init__(self) -> None:
+        import openai
+
+        self._openai = openai
+        self._client = openai.OpenAI(
+            api_key=settings.deepseek_api_key,
+            base_url=settings.deepseek_base_url,
+        )
+
+    def complete(self, prompt: str, schema: type[T]) -> T | None:
+        o = self._openai
+        shape = json.dumps(schema.model_json_schema(), ensure_ascii=False, indent=2)
+        full = (
+            f"{prompt}\n\n"
+            f"Respond with a single JSON object matching this schema exactly. "
+            f"Output JSON only, no markdown fences, no commentary.\n\n{shape}"
+        )
+        try:
+            res = self._client.chat.completions.create(
+                model=settings.deepseek_model,
+                max_tokens=4000,
+                response_format={"type": "json_object"},
+                messages=[{"role": "user", "content": full}],
+            )
+            raw = res.choices[0].message.content or ""
+        except o.NotFoundError:
+            log.warning("DeepSeek: model not found — check DEEPSEEK_MODEL")
+            return None
+        except o.RateLimitError:
+            log.warning("DeepSeek: rate limited, try again later")
+            return None
+        except o.APIStatusError as e:
+            log.warning("DeepSeek: HTTP %s", e.status_code)
+            return None
+        except o.APIConnectionError:
+            log.warning("DeepSeek: could not reach the API")
+            return None
+
+        try:
+            return schema.model_validate_json(raw)
+        except ValidationError as e:
+            log.warning("DeepSeek: reply did not match the schema (%s)", e.error_count())
+            return None
+
+
+_cached: _Provider | None = None
+
+
+def get_provider() -> _Provider | None:
+    """Build (and memoise) the configured provider, or None if AI features are off."""
+    global _cached
+    if _cached is not None:
+        return _cached
+
+    choice = settings.llm_provider.strip().lower()
     try:
-        return call()
-    except anthropic.NotFoundError:
-        log.warning("%s 失败:模型不存在或无权访问", what)
-    except anthropic.RateLimitError:
-        log.warning("%s 失败:触发限流,稍后再试", what)
-    except anthropic.APIStatusError as e:
-        log.warning("%s 失败:HTTP %s", what, e.status_code)
-    except anthropic.APIConnectionError:
-        log.warning("%s 失败:连不上 API", what)
-    return None
+        if choice == "anthropic" and settings.anthropic_api_key:
+            _cached = AnthropicProvider()
+        elif choice == "deepseek" and settings.deepseek_api_key:
+            _cached = DeepSeekProvider()
+        else:
+            return None
+    except ImportError as e:
+        log.warning("LLM provider %r unavailable: %s", choice, e)
+        return None
+    return _cached
 
 
+def is_enabled() -> bool:
+    return get_provider() is not None
+
+
+def provider_name() -> str:
+    p = get_provider()
+    return p.name if p else "none"
+
+
+# ---------------------------------------------------------------- public API
 def generate_followups(
     title: str, number: int, difficulty: str, chapter: str, n: int = 3
 ) -> list[FollowUpItem]:
-    """给一道题生成面试官追问。结果会被缓存进 DB,同一道题只生成一次。"""
-    client = _client()
-    if client is None:
+    """Generate interviewer follow-ups for one problem. Results are cached in the DB,
+    so each problem costs exactly one API call for its lifetime."""
+    provider = get_provider()
+    if provider is None:
         return []
 
-    prompt = f"""你是一位资深的软件工程师面试官,正在面试一位准备北美 new grad 岗位的候选人。
+    prompt = f"""You are a senior software engineer interviewing a new-grad candidate.
 
-候选人刚做完这道题:
-  LeetCode {number}. {title}({difficulty},属于「{chapter}」)
+The candidate has just finished this problem:
+  LeetCode {number}. {title} ({difficulty}, category: {chapter})
 
-请给出 {n} 个你会在候选人写完代码后追问的问题。要求:
-- 真实面试里会问的那种,不是教科书式的复述题
-- 覆盖不同角度:复杂度优化、边界与异常、需求变化(如数据量暴增/流式输入/并发)、其他解法的取舍
-- 由浅入深排序
-- 每个问题配一个「回答要点」,让候选人自己复盘时对照
+Give {n} follow-up questions you would ask after they finish coding. Requirements:
+- Questions a real interviewer asks, not textbook recitation
+- Cover different angles: complexity optimisation, edge cases and failure modes,
+  changing requirements (huge input, streaming data, concurrency), trade-offs against
+  alternative approaches
+- Order them from easier to harder
+- Pair each question with the key points a strong answer covers, so the candidate can
+  self-assess afterwards"""
 
-用中文写问题和要点。"""
-
-    result = _safe_parse(
-        lambda: client.messages.parse(
-            model=MODEL,
-            max_tokens=4000,
-            thinking={"type": "adaptive"},
-            output_config={"effort": "medium"},
-            messages=[{"role": "user", "content": prompt}],
-            output_format=FollowUpBundle,
-        ),
-        f"生成 {number} 的 follow-up",
-    )
-    return result.parsed_output.followups if result else []
+    result = provider.complete(prompt, FollowUpBundle)
+    return result.followups if result else []
 
 
 def review_code(
     title: str, number: int, difficulty: str, code: str, language: str = "Python"
 ) -> CodeReview | None:
-    """给提交的代码做 review,并猜它犯了哪些「错误标签」—— 省得每次手动勾。"""
-    client = _client()
-    if client is None or not code.strip():
+    """Review a submitted solution and infer which mistake tags it exhibits,
+    so the user does not have to tick them by hand."""
+    provider = get_provider()
+    if provider is None or not code.strip():
         return None
 
-    tag_list = "\n".join(f"  - {t['id']}: {t['label']} —— {t['hint']}" for t in MISTAKE_TAGS)
-    prompt = f"""审查这份 LeetCode 解法。
+    tag_list = "\n".join(f"  - {t['id']}: {t['label']} — {t['hint']}" for t in MISTAKE_TAGS)
+    prompt = f"""Review this LeetCode solution.
 
-题目:{number}. {title}({difficulty})
+Problem: {number}. {title} ({difficulty})
 
 ```{language.lower()}
 {code}
 ```
 
-请:
-1. 给一两句总评(是否正确、复杂度如何)
-2. 列出具体问题,每条一句话。真没问题就返回空列表,**不要为了凑数编问题**
-3. 从下面的错误标签里挑出这份代码**确实**犯了的(只返回 id,没有就空列表):
+Please:
+1. Give a one or two sentence verdict (is it correct, what is the complexity)
+2. List concrete issues, one sentence each. If there genuinely are none, return an empty
+   list — **do not invent problems to fill the quota**
+3. From the mistake tags below, pick the ones this code **actually** exhibits
+   (return ids only, empty list if none apply):
 
 {tag_list}
 
-用中文。评价要直接,不用客套。"""
+Be direct — skip the pleasantries."""
 
-    result = _safe_parse(
-        lambda: client.messages.parse(
-            model=MODEL,
-            max_tokens=4000,
-            thinking={"type": "adaptive"},
-            messages=[{"role": "user", "content": prompt}],
-            output_format=CodeReview,
-        ),
-        f"review {number} 的代码",
-    )
-    if not result:
+    review = provider.complete(prompt, CodeReview)
+    if review is None:
         return None
 
-    review = result.parsed_output
-    # 防止模型返回不存在的标签 id
     valid = {t["id"] for t in MISTAKE_TAGS}
     review.suggested_mistakes = [m for m in review.suggested_mistakes if m in valid]
     return review
-
-
-def is_enabled() -> bool:
-    return bool(settings.anthropic_api_key)

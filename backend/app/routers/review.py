@@ -1,4 +1,4 @@
-"""每日队列 + 提交做题记录(SRS 的入口)。"""
+"""Daily queue and attempt submission — the entry point into the SRS engine."""
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, Query
@@ -23,7 +23,7 @@ def today_queue(
     review_cap: int | None = Query(None, ge=0, le=50),
     new_cap: int | None = Query(None, ge=0, le=50),
 ):
-    """今天该做什么 —— app 的首页就是它。"""
+    """What to work on today — this powers the home screen."""
     d = get_today()
     q = build_today(db, d, review_cap, new_cap)
     return DailyQueueOut(
@@ -35,7 +35,7 @@ def today_queue(
 
 @router.get("/forecast")
 def review_forecast(db: Session = Depends(get_db), days: int = Query(14, ge=1, le=60)):
-    """未来复习负载,前端画柱状图。"""
+    """Upcoming review load, rendered as a bar chart in the UI."""
     return forecast(db, get_today(), days)
 
 
@@ -46,14 +46,14 @@ def grade_suggestion(
     had_bugs: bool = False,
     difficulty: str = "Medium",
 ):
-    """计时器停下时调用,给出推荐评分(前端默认选中它)。"""
+    """Called when the timer stops; the UI pre-selects the returned grade."""
     g = suggest_grade(seconds, looked_at_solution, had_bugs, difficulty)  # type: ignore[arg-type]
     mins = seconds / 60
     reason = {
-        "again": "看了答案 —— 明天重做",
-        "hard": f"用了 {mins:.0f} 分钟或有 bug —— 间隔只涨一点",
-        "good": f"{mins:.0f} 分钟顺利做出",
-        "easy": f"{mins:.0f} 分钟秒杀 —— 间隔大幅拉长",
+        "again": "Looked at the solution — back tomorrow",
+        "hard": f"Took {mins:.0f} min or hit bugs — interval grows only slightly",
+        "good": f"Solved smoothly in {mins:.0f} min",
+        "easy": f"Nailed it in {mins:.0f} min — interval stretches a lot",
     }[g]
     return GradeSuggestion(grade=g, reason=reason)
 
@@ -64,11 +64,11 @@ def submit_attempt(
     problem: Problem = Depends(get_problem),
     db: Session = Depends(get_db),
 ):
-    """做完一道题:记录 attempt + 跑 SRS 算下次复习时间。"""
+    """Record an attempt and let SRS compute the next review date."""
     d = get_today()
     st = ensure_state(db, problem)
 
-    # 1. 存这次的记录
+    # 1. Store this attempt
     attempt = Attempt(
         problem_id=problem.id,
         grade=payload.grade,
@@ -82,7 +82,7 @@ def submit_attempt(
     )
     db.add(attempt)
 
-    # 2. 跑 SRS(纯函数,好测)
+    # 2. Run the SRS step (pure function, easy to test)
     new_state = srs_review(st.to_srs(), payload.grade, problem.difficulty, d)  # type: ignore[arg-type]
     st.apply(new_state)
     st.total_attempts += 1
@@ -90,7 +90,7 @@ def submit_attempt(
     if payload.seconds > 0 and (st.best_seconds is None or payload.seconds < st.best_seconds):
         st.best_seconds = payload.seconds
 
-    # 3. 代码存档到题目上(方便下次二刷时 diff)
+    # 3. Keep the latest solution on the problem so the next pass can diff against it
     if payload.code.strip():
         problem.code = payload.code
 
@@ -106,5 +106,5 @@ def submit_attempt(
 
 @router.get("/{number}/attempts", response_model=list[AttemptOut])
 def attempt_history(problem: Problem = Depends(get_problem)):
-    """历史记录 —— 二刷时对比「这次 vs 上次」。"""
+    """History for this problem — lets you diff this attempt against the previous one."""
     return problem.attempts

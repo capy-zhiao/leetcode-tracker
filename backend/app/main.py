@@ -1,7 +1,7 @@
-"""FastAPI 应用入口。
+"""FastAPI entry point.
 
-跑起来后访问 http://localhost:8000/docs 就能看到自动生成的交互式 API 文档
-—— 这是 FastAPI 白送的,portfolio 上很好看。
+Once running, http://localhost:8000/docs serves interactive OpenAPI documentation —
+generated automatically by FastAPI from the type hints.
 """
 import logging
 from contextlib import asynccontextmanager
@@ -17,9 +17,10 @@ from .routers import mock, problems, review, stats
 
 logging.basicConfig(level=logging.INFO)
 
+
 @asynccontextmanager
 async def lifespan(_: FastAPI):
-    """应用启动时建表(SQLite 本地开发够用;正式迁移该上 Alembic)。"""
+    """Create tables on startup. Fine for SQLite dev; production should use Alembic."""
     Base.metadata.create_all(bind=engine)
     yield
 
@@ -27,7 +28,7 @@ async def lifespan(_: FastAPI):
 app = FastAPI(
     lifespan=lifespan,
     title="LeetCode Tracker API",
-    description="基于记忆曲线(SRS)的 NeetCode 250 刷题追踪器",
+    description="Spaced-repetition tracker for the NeetCode 250",
     version="1.0.0",
 )
 
@@ -45,6 +46,7 @@ def health():
     return {
         "status": "ok",
         "llm_enabled": llm.is_enabled(),
+        "llm_provider": llm.provider_name(),
         "daily_caps": {"review": settings.daily_review_cap, "new": settings.daily_new_cap},
     }
 
