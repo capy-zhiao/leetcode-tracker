@@ -1,15 +1,30 @@
-// Solve page: time it -> write code -> grade -> tag mistakes -> submit -> SRS schedules it
+// Solve page: time it -> write code -> state the complexity -> grade -> tag mistakes ->
+// submit -> SRS schedules the next review.
+//
+// Fully keyboard driven: Space toggles the timer, 1-4 pick a grade, Cmd+Enter submits from
+// anywhere including inside the editor.
 import { useEffect, useState } from 'react'
-import { Link, useParams } from 'react-router-dom'
+import { Link, useLocation, useParams } from 'react-router-dom'
+import CodeEditor from '../components/CodeEditor'
+import ComplexityPicker from '../components/ComplexityPicker'
 import GradeBar from '../components/GradeBar'
 import MistakePicker from '../components/MistakePicker'
+import PatternChips from '../components/PatternChips'
 import Timer, { formatTime, useTimer } from '../components/Timer'
 import { api } from '../lib/api'
-import type { Attempt, CodeReview, Grade, ProblemDetail } from '../lib/types'
+import { useHotkeys } from '../lib/useHotkeys'
+import type {
+  Attempt, CodeReview, ComplexityCheck, Grade, ProblemDetail,
+} from '../lib/types'
+
+const GRADE_ORDER: Grade[] = ['again', 'hard', 'good', 'easy']
 
 export default function Solve() {
   const { number } = useParams()           // pulls "994" out of /solve/994
   const num = Number(number)
+  // Mock interview hands over what you wrote under the clock, so nothing is retyped.
+  const handoff = useLocation().state as
+    { code?: string; timeComplexity?: string; spaceComplexity?: string } | null
 
   const [p, setP] = useState<ProblemDetail | null>(null)
   const [history, setHistory] = useState<Attempt[]>([])
@@ -22,14 +37,27 @@ export default function Solve() {
   const [note, setNote] = useState('')
   const [lookedAtSolution, setLooked] = useState(false)
   const [hadBugs, setHadBugs] = useState(false)
+  const [timeComplexity, setTimeComplexity] = useState('')
+  const [spaceComplexity, setSpaceComplexity] = useState('')
+  const [choices, setChoices] = useState<string[]>([])
   const [result, setResult] = useState<{ days: number } | null>(null)
+  const [complexity, setComplexity] = useState<ComplexityCheck | null>(null)
   const [aiReview, setAiReview] = useState<CodeReview | null>(null)
   const [busy, setBusy] = useState(false)
 
   useEffect(() => {
-    api.problem(num).then((d) => { setP(d); setCode(d.code || '') })
+    api.problem(num).then((d) => {
+      setP(d)
+      setCode(handoff?.code || d.code || '')
+    })
     api.attempts(num).then(setHistory).catch(() => {})
+    if (handoff?.timeComplexity) setTimeComplexity(handoff.timeComplexity)
+    if (handoff?.spaceComplexity) setSpaceComplexity(handoff.spaceComplexity)
+    // handoff is read once, on mount for this problem
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [num])
+
+  useEffect(() => { api.complexityChoices().then(setChoices).catch(() => {}) }, [])
 
   // Stopping the timer asks the backend which grade the performance deserves
   const stopAndSuggest = async () => {
@@ -43,20 +71,25 @@ export default function Solve() {
     setSuggestion(s.reason)
   }
 
+  const ready = Boolean(grade && timeComplexity.trim() && spaceComplexity.trim())
+
   const submit = async () => {
-    if (!grade) return
+    if (!ready || busy || result) return
     setBusy(true)
     try {
       const r = await api.submitAttempt(num, {
-        grade, seconds: timer.seconds, looked_at_solution: lookedAtSolution,
+        grade: grade!, seconds: timer.seconds, looked_at_solution: lookedAtSolution,
         had_bugs: hadBugs, mistakes, code, note, mode: 'practice',
+        time_complexity: timeComplexity, space_complexity: spaceComplexity,
       })
       setResult({ days: r.next_due_in_days })
+      setComplexity(r.complexity)
       setHistory(await api.attempts(num))
     } finally { setBusy(false) }
   }
 
   const runAiReview = async () => {
+    if (!code.trim() || busy) return
     setBusy(true)
     try {
       const r = await api.reviewCode(num, code)
@@ -64,6 +97,16 @@ export default function Solve() {
       setMistakes([...new Set([...mistakes, ...r.suggested_mistakes])])
     } catch (e) { alert((e as Error).message) } finally { setBusy(false) }
   }
+
+  useHotkeys({
+    space: () => (timer.running ? stopAndSuggest() : timer.start()),
+    '1': () => setGrade(GRADE_ORDER[0]),
+    '2': () => setGrade(GRADE_ORDER[1]),
+    '3': () => setGrade(GRADE_ORDER[2]),
+    '4': () => setGrade(GRADE_ORDER[3]),
+    r: () => runAiReview(),
+    'mod+enter': () => submit(),
+  })
 
   if (!p) return <p className="text-slate-400">Loading…</p>
   const prev = history[0]
@@ -80,6 +123,7 @@ export default function Solve() {
               {p.state && <> · {p.state.total_attempts} attempts
                 {p.state.lapses > 0 && <span className="text-orange-600"> · failed {p.state.lapses}x</span>}</>}
             </p>
+            <PatternChips patterns={p.patterns} className="mt-2" linkTo />
           </div>
           {p.url && <a href={p.url} target="_blank" rel="noreferrer" className="btn">Open on NeetCode ↗</a>}
         </div>
@@ -102,6 +146,7 @@ export default function Solve() {
             : <button className="btn" onClick={stopAndSuggest}>⏸ Stop &amp; grade</button>}
           <button className="btn" onClick={timer.reset}>Reset</button>
         </div>
+        <kbd className="text-[10px] text-slate-400 border border-slate-200 rounded px-1">space</kbd>
         {p.state?.best_seconds && (
           <span className="text-xs text-slate-400 ml-auto">best {formatTime(p.state.best_seconds)}</span>
         )}
@@ -112,16 +157,15 @@ export default function Solve() {
         <div className="flex items-center mb-2">
           <h2 className="font-medium">Solution</h2>
           <button className="btn ml-auto text-xs" onClick={runAiReview} disabled={busy || !code.trim()}>
-            🤖 AI Review
+            🤖 AI Review <kbd className="ml-1 text-[10px] text-slate-400">R</kbd>
           </button>
         </div>
-        <textarea
+        <CodeEditor
           value={code}
-          onChange={(e) => setCode(e.target.value)}
+          onChange={setCode}
+          onSubmit={submit}
+          height={340}
           placeholder="Write your solution here…"
-          className="w-full h-64 font-mono text-sm p-3 rounded-lg border border-slate-200
-                     focus:outline-none focus:ring-2 focus:ring-slate-300"
-          spellCheck={false}
         />
         {aiReview && (
           <div className="mt-3 rounded-lg bg-indigo-50 border border-indigo-200 p-3 text-sm">
@@ -159,6 +203,12 @@ export default function Solve() {
         <GradeBar value={grade} onChange={setGrade} />
         {suggestion && <p className="text-xs text-slate-500">🕐 Suggested from your time: {suggestion}</p>}
 
+        <ComplexityPicker
+          time={timeComplexity} space={spaceComplexity}
+          onTime={setTimeComplexity} onSpace={setSpaceComplexity}
+          choices={choices} result={complexity}
+        />
+
         <div>
           <p className="text-sm font-medium mb-1.5">
             What went wrong?
@@ -181,9 +231,17 @@ export default function Solve() {
             <Link to="/" className="underline ml-2">Back to today</Link>
           </div>
         ) : (
-          <button className="btn btn-primary w-full" onClick={submit} disabled={!grade || busy}>
-            {busy ? 'Submitting…' : 'Submit and schedule the next review'}
-          </button>
+          <>
+            <button className="btn btn-primary w-full" onClick={submit} disabled={!ready || busy}>
+              {busy ? 'Submitting…' : 'Submit and schedule the next review'}
+              <kbd className="ml-2 text-[10px] opacity-60">⌘↵</kbd>
+            </button>
+            {!ready && (
+              <p className="text-xs text-slate-400 text-center">
+                {!grade ? 'Pick a grade' : 'Fill in both complexities'} to submit
+              </p>
+            )}
+          </>
         )}
       </div>
 
@@ -198,6 +256,11 @@ export default function Solve() {
                 </span>
                 <span className="w-12">{a.grade}</span>
                 <span className="w-16 font-mono text-xs">{formatTime(a.seconds)}</span>
+                {a.complexity_ok !== null && (
+                  <span className="text-xs" title="complexity answer">
+                    {a.complexity_ok ? '✅' : '❌'} O
+                  </span>
+                )}
                 <span className="flex-1 truncate text-xs">{a.note}</span>
               </div>
             ))}

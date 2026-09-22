@@ -9,5 +9,5 @@ openai>=1.60
 pytest>=8.4
 httpx>=0.28
 
-# 部署到 Postgres 时再装(本地 SQLite 用不到):
+# Only needed when deploying against Postgres; local development uses SQLite:
 #   pip install "psycopg[binary]>=3.2"

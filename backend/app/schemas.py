@@ -33,6 +33,7 @@ class ProblemOut(BaseModel):
     url: str
     in_neetcode150: bool
     kind: str
+    patterns: list[str] = []
     state: StateOut | None = None
 
 
@@ -68,6 +69,10 @@ class AttemptIn(BaseModel):
     code: str = ""
     note: str = ""
     mode: str = "practice"
+    # Required by the UI, not by the schema — an older client that omits them still works.
+    time_complexity: str = ""
+    space_complexity: str = ""
+    blindwrite_score: float | None = None   # template drills only
 
 
 class AttemptOut(BaseModel):
@@ -81,6 +86,20 @@ class AttemptOut(BaseModel):
     note: str
     mode: str
     code: str = ""
+    time_complexity: str = ""
+    space_complexity: str = ""
+    complexity_ok: bool | None = None
+
+
+class ComplexityCheck(BaseModel):
+    """Verdict on the self-reported complexity. graded=False means we have no reference."""
+    graded: bool
+    time_ok: bool = False
+    space_ok: bool = False
+    expected_time: str = ""
+    expected_space: str = ""
+    accepted_time: list[str] = []
+    accepted_space: list[str] = []
 
 
 class AttemptResult(BaseModel):
@@ -88,6 +107,7 @@ class AttemptResult(BaseModel):
     attempt: AttemptOut
     state: StateOut
     next_due_in_days: int
+    complexity: ComplexityCheck | None = None
 
 
 class GradeSuggestion(BaseModel):
@@ -141,3 +161,65 @@ class CodeReviewOut(BaseModel):
     summary: str
     issues: list[str]
     suggested_mistakes: list[str]
+
+
+# --- template blind-write ---
+
+class BlindWriteIn(BaseModel):
+    code: str
+
+
+class CheckItem(BaseModel):
+    id: str
+    label: str
+    why: str
+    passed: bool
+
+
+class BlindWriteOut(BaseModel):
+    """Result of grading a blind-written template against the reference."""
+    number: int
+    name: str
+    passed: bool
+    similarity: float
+    checks: list[CheckItem]
+    missing: list[str]
+    diff: list[str]
+    verdict: str
+    suggested_grade: Grade
+    reference: str = ""          # withheld until the first attempt has been graded
+
+
+class TemplateOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    number: int
+    title: str
+    chapter: str
+    check_count: int = 0
+    state: StateOut | None = None
+
+
+# --- pattern proficiency ---
+
+class PatternStat(BaseModel):
+    id: str
+    label: str
+    description: str
+    total: int
+    started: int
+    mastered: int
+    attempts: int
+    avg_seconds: int
+    again_rate: float            # share of attempts graded "again"
+    weakness: float              # 0..1, higher = needs work. Drives the sort order.
+    template_number: int | None = None
+
+
+class ComplexityStat(BaseModel):
+    answered: int
+    graded: int
+    time_correct: int
+    space_correct: int
+    both_correct: int
+    accuracy: float
+    worst: list[dict]            # problems most often answered wrong

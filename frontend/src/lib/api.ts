@@ -1,8 +1,9 @@
 // Single place every network call goes through, so error handling lives in one spot and
 // swapping the base URL or adding an API key is a one-file change.
 import type {
-  Attempt, AttemptIn, AttemptResult, CodeReview, DailyQueue,
-  FollowUp, MistakeTag, MockStart, Problem, ProblemDetail, Stats,
+  Attempt, AttemptIn, AttemptResult, BlindWriteResult, CodeReview, ComplexityStats,
+  DailyQueue, FollowUp, MistakeTag, MockStart, PatternStat, Problem, ProblemDetail,
+  Stats, TemplateSummary,
 } from './types'
 
 // vite.config.ts proxies /api/* to http://localhost:8000/* during development
@@ -49,17 +50,30 @@ export const api = {
       method: 'POST', body: JSON.stringify(body),
     }),
   attempts: (number: number) => request<Attempt[]>(`/review/${number}/attempts`),
+  complexityChoices: () => request<string[]>('/review/complexity-choices'),
 
   // --- problem library ---
-  problems: (f?: { chapter?: number; difficulty?: string; status?: string; q?: string; kind?: string }) =>
+  problems: (f?: { chapter?: number; difficulty?: string; status?: string; q?: string;
+                   pattern?: string; kind?: string }) =>
     request<Problem[]>(`/problems${qs(f ?? {})}`),
   problem: (number: number) => request<ProblemDetail>(`/problems/${number}`),
   updateProblem: (number: number, body: { notes?: string; code?: string }) =>
     request<ProblemDetail>(`/problems/${number}`, { method: 'PATCH', body: JSON.stringify(body) }),
   mistakeTags: () => request<MistakeTag[]>('/problems/mistake-tags'),
 
+  // --- template blind-write drills ---
+  templates: () => request<TemplateSummary[]>('/templates'),
+  checkBlindWrite: (number: number, code: string) =>
+    request<BlindWriteResult>(`/templates/${number}/check`, {
+      method: 'POST', body: JSON.stringify({ code }),
+    }),
+  templateReference: (number: number) =>
+    request<{ number: number; name: string; reference: string }>(`/templates/${number}/reference`),
+
   // --- stats ---
   stats: () => request<Stats>('/stats'),
+  patterns: () => request<PatternStat[]>('/stats/patterns'),
+  complexityStats: () => request<ComplexityStats>('/stats/complexity'),
   heatmap: (days = 90) => request<{ date: string; count: number }[]>(`/stats/heatmap${qs({ days })}`),
 
   // --- mock interview ---

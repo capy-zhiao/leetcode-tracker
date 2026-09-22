@@ -3,7 +3,8 @@
 Three core tables:
   Problem     — static information for the 250 problems
   ReviewState — SRS state per problem (1:1); the persisted form of srs.SrsState
-  Attempt     — one row per attempt (1:N); powers stats and code diffs
+  Attempt     — one row per attempt (1:N); powers stats, code diffs and complexity accuracy
+  FollowUp    — cached interviewer follow-up questions (1:N)
 """
 from __future__ import annotations
 
@@ -34,6 +35,9 @@ class Problem(Base):
     kind: Mapped[str] = mapped_column(String(20), default="problem")  # problem | template
     notes: Mapped[str] = mapped_column(Text, default="")         # migrated from markdown notes
     code: Mapped[str] = mapped_column(Text, default="")          # most recent accepted solution
+    # Algorithm patterns (see patterns.py). Cuts across chapters: 239 sits in the Sliding
+    # Window chapter but is really a monotonic deque.
+    patterns: Mapped[list] = mapped_column(JSON, default=list)
 
     state: Mapped["ReviewState"] = relationship(
         back_populates="problem", uselist=False, cascade="all, delete-orphan"
@@ -88,7 +92,14 @@ class Attempt(Base):
     mistakes: Mapped[list] = mapped_column(JSON, default=list)   # ids from constants.MISTAKE_TAGS
     code: Mapped[str] = mapped_column(Text, default="")
     note: Mapped[str] = mapped_column(Text, default="")          # one line: why you got stuck
-    mode: Mapped[str] = mapped_column(String(10), default="practice")  # practice | mock
+    mode: Mapped[str] = mapped_column(String(10), default="practice")  # practice | mock | drill
+    # Self-reported complexity, required by the submit form. complexity_ok is None when we
+    # have no reference answer for this problem, so "not graded" stays distinct from "wrong".
+    time_complexity: Mapped[str] = mapped_column(String(40), default="")
+    space_complexity: Mapped[str] = mapped_column(String(40), default="")
+    complexity_ok: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
+    # Template blind-writes only: fraction of checkpoints hit, 0..1
+    blindwrite_score: Mapped[float | None] = mapped_column(Float, nullable=True)
 
     problem: Mapped[Problem] = relationship(back_populates="attempts")
 

@@ -24,6 +24,7 @@ export interface Problem {
   url: string
   in_neetcode150: boolean
   kind: 'problem' | 'template'
+  patterns: string[]
   state: ReviewStateT | null
 }
 
@@ -59,7 +60,10 @@ export interface AttemptIn {
   mistakes: string[]
   code: string
   note: string
-  mode: 'practice' | 'mock'
+  mode: 'practice' | 'mock' | 'drill'
+  time_complexity: string
+  space_complexity: string
+  blindwrite_score?: number | null
 }
 
 export interface Attempt {
@@ -72,12 +76,26 @@ export interface Attempt {
   note: string
   mode: string
   code: string
+  time_complexity: string
+  space_complexity: string
+  complexity_ok: boolean | null
+}
+
+export interface ComplexityCheck {
+  graded: boolean
+  time_ok: boolean
+  space_ok: boolean
+  expected_time: string
+  expected_space: string
+  accepted_time: string[]
+  accepted_space: string[]
 }
 
 export interface AttemptResult {
   attempt: Attempt
   state: ReviewStateT
   next_due_in_days: number
+  complexity: ComplexityCheck | null
 }
 
 export interface ChapterStat {
@@ -96,3 +114,59 @@ export interface Stats {
 export interface FollowUp { id: number; question: string; hint: string }
 export interface MockStart { problem: ProblemDetail; minutes: number; followups_ready: boolean }
 export interface CodeReview { summary: string; issues: string[]; suggested_mistakes: string[] }
+
+// --- template blind-write drills ---
+
+export interface TemplateSummary {
+  number: number
+  title: string
+  chapter: string
+  check_count: number
+  state: ReviewStateT | null
+}
+
+export interface BlindWriteCheck {
+  id: string
+  label: string
+  why: string
+  passed: boolean
+}
+
+export interface BlindWriteResult {
+  number: number
+  name: string
+  passed: boolean
+  similarity: number
+  checks: BlindWriteCheck[]
+  missing: string[]
+  diff: string[]
+  verdict: string
+  suggested_grade: Grade
+  reference: string
+}
+
+// --- pattern proficiency ---
+
+export interface PatternStat {
+  id: string
+  label: string
+  description: string
+  total: number
+  started: number
+  mastered: number
+  attempts: number
+  avg_seconds: number
+  again_rate: number
+  weakness: number
+  template_number: number | null
+}
+
+export interface ComplexityStats {
+  answered: number
+  graded: number
+  time_correct: number
+  space_correct: number
+  both_correct: number
+  accuracy: number
+  worst: { number: number; title: string; wrong: number; attempts: number }[]
+}

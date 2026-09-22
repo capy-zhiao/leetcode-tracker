@@ -13,14 +13,18 @@ from . import llm
 from .config import settings
 from .database import Base, engine
 from .deps import require_api_key
-from .routers import mock, problems, review, stats
+from .routers import mock, problems, review, stats, templates
 
 logging.basicConfig(level=logging.INFO)
 
 
 @asynccontextmanager
 async def lifespan(_: FastAPI):
-    """Create tables on startup. Fine for SQLite dev; production should use Alembic."""
+    """Create missing tables on startup.
+
+    This does NOT add columns to tables that already exist — run migrate.py for that
+    (start.sh does). Alembic replaces both once columns start being renamed or dropped.
+    """
     Base.metadata.create_all(bind=engine)
     yield
 
@@ -51,5 +55,5 @@ def health():
     }
 
 
-for r in (problems.router, review.router, stats.router, mock.router):
+for r in (problems.router, review.router, stats.router, mock.router, templates.router):
     app.include_router(r, dependencies=[Depends(require_api_key)])

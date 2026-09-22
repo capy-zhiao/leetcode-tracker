@@ -4,11 +4,12 @@ from datetime import datetime, timezone
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
 
+from ..complexity import COMPLEXITY_CHOICES, check as check_complexity
 from ..database import get_db
 from ..deps import ensure_state, get_problem, today as get_today
 from ..models import Attempt, Problem
 from ..schemas import (
-    AttemptIn, AttemptOut, AttemptResult, DailyQueueOut,
+    AttemptIn, AttemptOut, AttemptResult, ComplexityCheck, DailyQueueOut,
     GradeSuggestion, StateOut,
 )
 from ..scheduler import build_today, forecast
@@ -79,7 +80,18 @@ def submit_attempt(
         code=payload.code,
         note=payload.note,
         mode=payload.mode,
+        time_complexity=payload.time_complexity.strip(),
+        space_complexity=payload.space_complexity.strip(),
+        blindwrite_score=payload.blindwrite_score,
     )
+
+    # 1b. Grade the self-reported complexity. verdict is None when we have no reference,
+    # which keeps "not graded" distinct from "answered wrong" in the stats.
+    verdict = check_complexity(
+        problem.number, payload.time_complexity, payload.space_complexity
+    )
+    if verdict is not None:
+        attempt.complexity_ok = verdict["time_ok"] and verdict["space_ok"]
     db.add(attempt)
 
     # 2. Run the SRS step (pure function, easy to test)
@@ -101,7 +113,17 @@ def submit_attempt(
         attempt=AttemptOut.model_validate(attempt),
         state=StateOut.model_validate(st),
         next_due_in_days=new_state.interval_days,
+        complexity=(
+            ComplexityCheck(graded=True, **verdict) if verdict
+            else ComplexityCheck(graded=False)
+        ),
     )
+
+
+@router.get("/complexity-choices")
+def complexity_choices():
+    """Fills the complexity dropdowns. Free text is accepted too — it is recorded, not graded."""
+    return COMPLEXITY_CHOICES
 
 
 @router.get("/{number}/attempts", response_model=list[AttemptOut])

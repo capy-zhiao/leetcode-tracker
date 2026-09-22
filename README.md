@@ -1,5 +1,10 @@
 # 🧠 LeetCode Tracker
 
+[![CI](https://github.com/capy-zhiao/leetcode-tracker/actions/workflows/ci.yml/badge.svg)](https://github.com/capy-zhiao/leetcode-tracker/actions/workflows/ci.yml)
+![Python](https://img.shields.io/badge/python-3.12%20%7C%203.13-blue)
+![React](https://img.shields.io/badge/react-18-61dafb)
+![Tests](https://img.shields.io/badge/tests-101-brightgreen)
+
 A spaced-repetition tracker for the **NeetCode 250**: it decides what to practise each day,
 schedules reviews on a forgetting curve, tracks your personal bug patterns, and runs timed
 mock interviews with LLM-generated follow-up questions.
@@ -18,6 +23,10 @@ mock interviews with LLM-generated follow-up questions.
 | **Mistake pattern tracking** | 15 tags; once you have some history it ranks them into a **personal pre-submit checklist** |
 | **Solution history & diff** | Every submission is archived, so a second pass can be compared against the first |
 | **Mock interview** | Random problem, countdown, notes hidden, then **interviewer follow-up questions** |
+| **Template blind-writing** | Write one of 15 algorithm skeletons from memory; it is graded against **checkpoints** (does `find` loop with `while`?) rather than text similarity, then shown as a diff |
+| **Complexity self-check** | Time and space are **required** before an attempt can be submitted, and graded against a reference for 217 of the 250 problems |
+| **Proficiency by pattern** | 40 techniques cutting across the roadmap, ranked weakest first, each linked to the drill that fixes it |
+| **Fully keyboard driven** | Space, 1-4, ⌘↵, J/K — one solve without touching the mouse |
 | **AI code review** | An LLM reviews your solution and infers which mistake tags it exhibits |
 
 ## 🏗 Architecture
@@ -40,6 +49,14 @@ Claude or DeepSeek                        follow-up generation + code review (op
 - **The LLM layer is provider-agnostic** (`app/llm.py`). Claude uses native structured outputs;
   DeepSeek goes through its OpenAI-compatible endpoint with JSON mode plus Pydantic validation.
   Adding a third provider means implementing one `complete()` method.
+- **Blind-write grading is by checkpoint, not by diff** (`app/blindwrite.py`). Text similarity
+  is the wrong signal: a Union-Find with every identifier renamed scores 0.39 and is correct,
+  while a binary search missing its `mid + 1` scores 0.92 and loops forever. Each template
+  carries regex checkpoints for the lines that actually cause bugs, and a test asserts every
+  reference implementation passes its own checkpoints.
+- **Complexity answers are normalized before comparison** (`app/complexity.py`), so
+  `O(m*n)`, `O(N M)` and `O(n * m)` are one answer, while each problem accepts a *list* of
+  correct answers — 3Sum's space is O(1) or O(n) depending on whether the sort counts.
 - **Storage is swappable** — `DATABASE_URL` alone moves you between SQLite and Postgres.
 - **Everything degrades gracefully** — with no LLM configured, AI features return sensible
   fallbacks and the rest of the app is unaffected.
@@ -151,11 +168,28 @@ change.
 For a public deployment set `API_KEY` on the backend and `VITE_API_KEY` on the frontend;
 the middleware then requires a matching `X-API-Key` header.
 
+## ⌨️ Keyboard shortcuts
+
+Press <kbd>?</kbd> anywhere for this list.
+
+| Key | Action | Where |
+| --- | --- | --- |
+| <kbd>Space</kbd> | Start / stop the timer | Solve |
+| <kbd>1</kbd>–<kbd>4</kbd> | Pick a grade, again → easy | Solve |
+| <kbd>⌘</kbd><kbd>↵</kbd> | Submit — works from inside the editor | Solve, Drill |
+| <kbd>C</kbd> | Check the blind-write | Drill |
+| <kbd>R</kbd> | Run the AI code review | Solve |
+| <kbd>J</kbd> / <kbd>K</kbd> | Move through the queue | Today |
+| <kbd>G</kbd> | Jump to Today | Anywhere |
+
+Shortcuts are suppressed while the caret is in an editor, so <kbd>Space</kbd> types a space
+while you are writing code. <kbd>⌘</kbd><kbd>↵</kbd> is the exception, registered as a
+Monaco command so it fires from inside the editor too.
+
 ## 🗺 Roadmap
 
 - [ ] JWT accounts (currently single-user with optional API-key protection)
-- [ ] Alembic migrations (currently `create_all` on startup)
+- [ ] Alembic migrations (currently an additive `migrate.py` plus `create_all` on startup)
 - [ ] Daily email reminder (Vercel Cron + Resend)
-- [ ] Monaco editor in place of the plain textarea
-- [ ] Proficiency view grouped by pattern (sliding window, monotonic stack, union-find)
-  rather than by chapter
+- [ ] Reference complexities for the remaining 33 problems
+- [ ] Spoken mock interviews — record the explanation, not just the code

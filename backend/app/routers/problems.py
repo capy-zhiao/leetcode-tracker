@@ -21,6 +21,7 @@ def list_problems(
         None, alias="status",
         description="new (never attempted) / learning (attempted, interval < 21d) / mastered"),
     q: str | None = Query(None, description="Search by title or problem number"),
+    pattern: str | None = Query(None, description="Filter by algorithm pattern id"),
     kind: str = Query("problem", description="problem or template"),
 ):
     stmt = select(Problem).options(selectinload(Problem.state)).where(Problem.kind == kind)
@@ -35,6 +36,11 @@ def list_problems(
             stmt = stmt.where(Problem.title.ilike(f"%{q}%"))
 
     items = list(db.scalars(stmt.order_by(Problem.chapter_num, Problem.number)))
+
+    if pattern:
+        # patterns is a JSON column; filtering in Python keeps this portable across
+        # SQLite and Postgres, and 250 rows is far too few for it to matter.
+        items = [p for p in items if pattern in (p.patterns or [])]
 
     if status_filter == "new":
         items = [p for p in items if not p.state or p.state.due is None]

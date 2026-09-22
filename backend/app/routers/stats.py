@@ -6,11 +6,13 @@ from fastapi import APIRouter, Depends
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session, selectinload
 
+from ..complexity import EXPECTED, check as check_complexity
 from ..constants import MISTAKE_TAGS
 from ..database import get_db
 from ..deps import today as get_today
 from ..models import Attempt, Problem
-from ..schemas import ChapterStat, MistakeStat, StatsOut
+from ..patterns import PATTERN_TEMPLATE, PATTERNS, describe, label, patterns_for
+from ..schemas import ChapterStat, ComplexityStat, MistakeStat, PatternStat, StatsOut
 
 router = APIRouter(prefix="/stats", tags=["stats"])
 
@@ -102,3 +104,111 @@ def heatmap(db: Session = Depends(get_db), days: int = 90):
         if day >= start:
             counter[day.isoformat()] += 1
     return [{"date": k, "count": v} for k, v in sorted(counter.items())]
+
+
+# Weighting for the weakness score. Coverage dominates (you cannot be good at a pattern you
+# have not practiced), then how often attempts collapse, then historic failures.
+W_COVERAGE, W_AGAIN, W_LAPSE = 0.45, 0.35, 0.20
+
+
+@router.get("/patterns", response_model=list[PatternStat])
+def pattern_proficiency(db: Session = Depends(get_db)):
+    """Proficiency grouped by algorithm pattern rather than by roadmap chapter.
+
+    An interviewer asks "is this a sliding window or a monotonic stack", never "which
+    chapter is this". Sorted weakest first, so the top of the list is the revision list.
+    """
+    problems = list(db.scalars(
+        select(Problem).options(selectinload(Problem.state)).where(Problem.kind == "problem")
+    ))
+    by_id = {p.id: p for p in problems}
+
+    # attempts grouped by problem, so each attempt is counted once per pattern
+    attempts_by_problem: dict[int, list[Attempt]] = {}
+    for a in db.scalars(select(Attempt)):
+        attempts_by_problem.setdefault(a.problem_id, []).append(a)
+
+    buckets: dict[str, list[Problem]] = {pid: [] for pid in PATTERNS}
+    for p in problems:
+        for tag in (p.patterns or patterns_for(p.number, p.chapter_num)):
+            buckets.setdefault(tag, []).append(p)
+
+    out: list[PatternStat] = []
+    for pid, group in buckets.items():
+        if not group:
+            continue
+        total = len(group)
+        started = sum(1 for p in group if p.state and p.state.due)
+        mastered = sum(
+            1 for p in group
+            if p.state and p.state.interval_days >= MASTERED_INTERVAL
+        )
+        lapses = sum(p.state.lapses for p in group if p.state)
+
+        atts = [a for p in group for a in attempts_by_problem.get(p.id, [])]
+        timed = [a.seconds for a in atts if a.seconds > 0]
+        again = sum(1 for a in atts if a.grade == "again")
+        again_rate = again / len(atts) if atts else 0.0
+
+        coverage_gap = 1.0 - (mastered / total)
+        lapse_ratio = min(1.0, lapses / started) if started else 0.0
+        weakness = (
+            W_COVERAGE * coverage_gap + W_AGAIN * again_rate + W_LAPSE * lapse_ratio
+        )
+
+        out.append(PatternStat(
+            id=pid, label=label(pid), description=describe(pid),
+            total=total, started=started, mastered=mastered,
+            attempts=len(atts),
+            avg_seconds=int(sum(timed) / len(timed)) if timed else 0,
+            again_rate=round(again_rate, 3),
+            weakness=round(weakness, 3),
+            template_number=PATTERN_TEMPLATE.get(pid),
+        ))
+
+    out.sort(key=lambda s: (-s.weakness, s.label))
+    return out
+
+
+@router.get("/complexity", response_model=ComplexityStat)
+def complexity_accuracy(db: Session = Depends(get_db)):
+    """How often the self-reported big-O was right.
+
+    Only attempts on problems with a reference answer count towards accuracy; the rest are
+    recorded but not graded, so the number never pretends to more certainty than it has.
+    """
+    numbers = {p.id: p.number for p in db.scalars(select(Problem))}
+    answered = graded = t_ok = s_ok = both = 0
+    wrong: Counter[int] = Counter()
+    seen: Counter[int] = Counter()
+
+    for a in db.scalars(select(Attempt)):
+        if not (a.time_complexity or a.space_complexity):
+            continue
+        answered += 1
+        num = numbers.get(a.problem_id)
+        if num is None or num not in EXPECTED:
+            continue
+        verdict = check_complexity(num, a.time_complexity, a.space_complexity)
+        if verdict is None:
+            continue
+        graded += 1
+        seen[num] += 1
+        t_ok += verdict["time_ok"]
+        s_ok += verdict["space_ok"]
+        if verdict["time_ok"] and verdict["space_ok"]:
+            both += 1
+        else:
+            wrong[num] += 1
+
+    titles = {p.number: p.title for p in db.scalars(select(Problem))}
+    worst = [
+        {"number": n, "title": titles.get(n, ""), "wrong": c, "attempts": seen[n]}
+        for n, c in wrong.most_common(8)
+    ]
+    return ComplexityStat(
+        answered=answered, graded=graded,
+        time_correct=t_ok, space_correct=s_ok, both_correct=both,
+        accuracy=round(both / graded, 3) if graded else 0.0,
+        worst=worst,
+    )

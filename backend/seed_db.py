@@ -17,6 +17,7 @@ from sqlalchemy import select
 
 from app.database import Base, SessionLocal, engine
 from app.models import Problem, ReviewState
+from app.patterns import patterns_for
 from app.srs import DEFAULT_EASE
 
 SEED = Path(__file__).resolve().parent.parent / "data" / "seed.json"
@@ -84,6 +85,7 @@ def main() -> None:
                     chapter=item["chapter"], url=item["url"],
                     in_neetcode150=item["in_neetcode150"], kind="problem",
                     notes=item["notes"], code=item["code"],
+                    patterns=patterns_for(item["number"], item["chapter_num"]),
                 )
                 db.add(p)
                 db.flush()
@@ -92,6 +94,9 @@ def main() -> None:
                 # Refresh static fields without touching attempt history
                 p.title, p.difficulty = item["title"], item["difficulty"]
                 p.url = item["url"] or p.url
+                # Pattern tags are derived data — always refresh them so retagging a
+                # problem in patterns.py takes effect on the next run.
+                p.patterns = patterns_for(item["number"], item["chapter_num"])
                 if item["notes"] and not p.notes:
                     p.notes = item["notes"]
                 if item["code"] and not p.code:
@@ -116,7 +121,7 @@ def main() -> None:
             t = Problem(
                 number=num, title=name, difficulty=diff, chapter_num=ch_num,
                 chapter=ch, url="", in_neetcode150=False, kind="template",
-                notes="Blind-write practice", code="",
+                notes="Blind-write practice", code="", patterns=[],
             )
             db.add(t)
             db.flush()
@@ -131,6 +136,7 @@ def main() -> None:
     print(f"  problems added: {added}   updated: {updated}")
     print(f"  solved -> due today: {with_state}")
     print(f"  templates: {t_added}")
+    print(f"  pattern tags refreshed on {added + updated} problems")
 
 
 if __name__ == "__main__":

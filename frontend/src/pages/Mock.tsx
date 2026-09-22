@@ -1,5 +1,7 @@
 // Mock interview: random problem, countdown, and interviewer follow-ups from the LLM.
 import { useState } from 'react'
+import { Link } from 'react-router-dom'
+import CodeEditor from '../components/CodeEditor'
 import Timer, { useTimer } from '../components/Timer'
 import { api } from '../lib/api'
 import type { FollowUp, MockStart } from '../lib/types'
@@ -11,6 +13,10 @@ export default function Mock() {
   const [difficulty, setDifficulty] = useState('')
   const [onlySolved, setOnlySolved] = useState(false)
   const [answered, setAnswered] = useState<number[]>([])
+  const [code, setCode] = useState('')
+  // Asked before the follow-ups, because that is the order a real interview uses.
+  const [timeComplexity, setTimeComplexity] = useState('')
+  const [spaceComplexity, setSpaceComplexity] = useState('')
   const [loading, setLoading] = useState(false)
   const timer = useTimer()
 
@@ -19,6 +25,7 @@ export default function Mock() {
     try {
       const s = await api.mockStart({ difficulty: difficulty || undefined, only_solved: onlySolved })
       setSession(s); setFollowups([]); setAnswered([]); setPhase('solving')
+      setCode(''); setTimeComplexity(''); setSpaceComplexity('')
       timer.reset(); timer.start()
     } catch (e) { alert((e as Error).message) } finally { setLoading(false) }
   }
@@ -78,6 +85,22 @@ export default function Mock() {
           {p.url && <a href={p.url} target="_blank" rel="noreferrer" className="btn inline-block">
             Open the problem ↗
           </a>}
+          <CodeEditor value={code} onChange={setCode} onSubmit={toFollowup} height={300}
+                      placeholder="Code it here, under the clock…" />
+          <div className="grid grid-cols-2 gap-2">
+            <label className="block">
+              <span className="text-xs text-slate-500">Time complexity</span>
+              <input value={timeComplexity} onChange={(e) => setTimeComplexity(e.target.value)}
+                     placeholder="O(n log n)" spellCheck={false}
+                     className="w-full mt-0.5 text-sm font-mono p-2 rounded-lg border border-slate-200" />
+            </label>
+            <label className="block">
+              <span className="text-xs text-slate-500">Space complexity</span>
+              <input value={spaceComplexity} onChange={(e) => setSpaceComplexity(e.target.value)}
+                     placeholder="O(1)" spellCheck={false}
+                     className="w-full mt-0.5 text-sm font-mono p-2 rounded-lg border border-slate-200" />
+            </label>
+          </div>
           <button className="btn btn-primary w-full" onClick={toFollowup}>
             Done coding — go to follow-ups →
           </button>
@@ -104,7 +127,14 @@ export default function Mock() {
             )
           })}
           <div className="flex gap-2">
-            <a href={`/solve/${p.number}`} className="btn flex-1 text-center">Record this attempt</a>
+            {/* Carry the session through so the solve page starts from what you just wrote */}
+            <Link
+              to={`/solve/${p.number}`}
+              state={{ code, timeComplexity, spaceComplexity, fromMock: true }}
+              className="btn flex-1 text-center"
+            >
+              Record this attempt
+            </Link>
             <button className="btn flex-1" onClick={() => { setPhase('idle'); setSession(null) }}>
               Another one
             </button>

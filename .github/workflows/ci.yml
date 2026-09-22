@@ -1,0 +1,84 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  backend:
+    name: Backend tests (Python ${{ matrix.python }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python: ['3.12', '3.13']
+    defaults:
+      run:
+        working-directory: backend
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Run tests
+        run: pytest -q
+
+  frontend:
+    name: Frontend build
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Type-check and build
+        run: npm run build
+
+  seed:
+    name: Seed data integrity
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+
+      - name: All 250 problems are present and tagged
+        run: |
+          python - <<'PY'
+          import json, sys
+          sys.path.insert(0, "backend")
+          from app.patterns import PATTERNS, PROBLEM_PATTERNS
+
+          problems = json.load(open("data/seed.json"))["problems"]
+          numbers = {p["number"] for p in problems}
+
+          assert len(problems) == 250, f"expected 250 problems, found {len(problems)}"
+          assert numbers <= set(PROBLEM_PATTERNS), "some problems have no pattern tag"
+          unknown = {t for tags in PROBLEM_PATTERNS.values() for t in tags} - set(PATTERNS)
+          assert not unknown, f"undefined pattern ids: {unknown}"
+          print(f"OK: {len(problems)} problems, {len(PATTERNS)} patterns, all tagged")
+          PY
