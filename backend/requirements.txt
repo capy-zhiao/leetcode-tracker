@@ -1,0 +1,12 @@
+fastapi>=0.118
+uvicorn[standard]>=0.37
+sqlalchemy>=2.0.43
+pydantic>=2.11
+pydantic-settings>=2.11
+python-dotenv>=1.1
+anthropic>=0.69
+pytest>=8.4
+httpx>=0.28
+
+# 部署到 Postgres 时再装(本地 SQLite 用不到):
+#   pip install "psycopg[binary]>=3.2"

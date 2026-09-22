@@ -1,0 +1,16 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  body { @apply bg-slate-50 text-slate-800 antialiased; }
+}
+
+@layer components {
+  .card { @apply bg-white rounded-xl border border-slate-200 p-4; }
+  .btn  { @apply px-3 py-2 rounded-lg border border-slate-300 bg-white text-sm
+                 hover:bg-slate-50 active:scale-[0.98] transition disabled:opacity-40
+                 disabled:cursor-not-allowed; }
+  .btn-primary { @apply bg-slate-900 text-white border-slate-900 hover:bg-slate-700; }
+  .chip { @apply inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-xs font-medium; }
+}
