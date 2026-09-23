@@ -1,5 +1,6 @@
 """Shared dependencies and small helpers."""
 from datetime import date, datetime, timezone
+from zoneinfo import ZoneInfo
 
 from fastapi import Depends, Header, HTTPException, status
 from sqlalchemy import select
@@ -33,5 +34,33 @@ def ensure_state(db: Session, problem: Problem) -> ReviewState:
     return problem.state
 
 
+def _zone() -> ZoneInfo | None:
+    """The configured study-day zone, or None meaning the machine's local zone."""
+    if not settings.timezone:
+        return None
+    try:
+        return ZoneInfo(settings.timezone)
+    except Exception:                      # unknown zone name: fall back rather than crash
+        return None
+
+
 def today() -> date:
-    return datetime.now(timezone.utc).date()
+    """The current study day.
+
+    Deliberately NOT the UTC date. Timestamps are stored in UTC, but a day boundary at
+    00:00 UTC is 20:00 the previous evening in EDT, so an evening session would land on
+    the next day: tomorrow's queue would appear at 8pm and the streak would break.
+    """
+    return datetime.now(_zone()).date()
+
+
+def local_date(dt: datetime) -> date:
+    """Which study day a stored timestamp belongs to.
+
+    created_at is written as UTC but stored naive (the column has no timezone), so it has
+    to be re-stamped as UTC before converting — otherwise astimezone() would read it as
+    local time and shift it a second time.
+    """
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    return dt.astimezone(_zone()).date()

@@ -1,5 +1,7 @@
 """End-to-end API tests."""
-from datetime import date, timedelta
+from datetime import timedelta
+
+from app.deps import today as study_today
 
 
 def test_health(client):
@@ -44,7 +46,7 @@ def test_submit_attempt_updates_srs(client, sample_problems):
     assert body["state"]["reps"] == 1
     assert body["state"]["total_attempts"] == 1
     assert body["state"]["best_seconds"] == 600
-    assert body["state"]["due"] == (date.today() + timedelta(days=5)).isoformat()
+    assert body["state"]["due"] == (study_today() + timedelta(days=5)).isoformat()
 
     # It should drop out of today's review queue
     nums = [i["problem"]["number"] for i in client.get("/review/today").json()["reviews"]]

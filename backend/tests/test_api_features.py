@@ -1,8 +1,7 @@
 """End-to-end tests for the template drill, complexity check and pattern view."""
-from datetime import date
-
 import pytest
 
+from app.deps import today as study_today
 from app.models import Problem, ReviewState
 from app.templates_ref import BY_NUMBER
 
@@ -18,7 +17,7 @@ def sample_templates(db_session):
     db_session.add_all(rows)
     db_session.flush()
     for r in rows:
-        db_session.add(ReviewState(problem_id=r.id, interval_days=0, due=date.today()))
+        db_session.add(ReviewState(problem_id=r.id, interval_days=0, due=study_today()))
     db_session.commit()
     return rows
 
@@ -31,7 +30,7 @@ def test_list_templates(client, sample_templates):
     body = r.json()
     assert [t["number"] for t in body] == [9001, 9006]
     assert body[0]["check_count"] == len(BY_NUMBER[9001].checks)
-    assert body[0]["state"]["due"] == date.today().isoformat()
+    assert body[0]["state"]["due"] == study_today().isoformat()
 
 
 def test_check_accepts_a_correct_blindwrite(client):

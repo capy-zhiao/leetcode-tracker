@@ -3,7 +3,7 @@
 [![CI](https://github.com/capy-zhiao/leetcode-tracker/actions/workflows/ci.yml/badge.svg)](https://github.com/capy-zhiao/leetcode-tracker/actions/workflows/ci.yml)
 ![Python](https://img.shields.io/badge/python-3.12%20%7C%203.13-blue)
 ![React](https://img.shields.io/badge/react-18-61dafb)
-![Tests](https://img.shields.io/badge/tests-101-brightgreen)
+![Tests](https://img.shields.io/badge/tests-107-brightgreen)
 
 A spaced-repetition tracker for the **NeetCode 250**: it decides what to practise each day,
 schedules reviews on a forgetting curve, tracks your personal bug patterns, and runs timed
@@ -57,6 +57,10 @@ Claude or DeepSeek                        follow-up generation + code review (op
 - **Complexity answers are normalized before comparison** (`app/complexity.py`), so
   `O(m*n)`, `O(N M)` and `O(n * m)` are one answer, while each problem accepts a *list* of
   correct answers — 3Sum's space is O(1) or O(n) depending on whether the sort counts.
+- **"Today" is the user's day, not UTC** (`app/deps.py`). Timestamps are stored in UTC, but
+  a UTC day boundary falls at 20:00 the previous evening in EDT — so an evening session
+  would land on the next date, showing tomorrow's queue at 8pm and breaking the streak.
+  `TIMEZONE` pins the zone when deploying to a UTC server.
 - **Storage is swappable** — `DATABASE_URL` alone moves you between SQLite and Postgres.
 - **Everything degrades gracefully** — with no LLM configured, AI features return sensible
   fallbacks and the rest of the app is unaffected.

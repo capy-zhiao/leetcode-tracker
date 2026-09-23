@@ -6,6 +6,7 @@ from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
 from app.database import Base, get_db
+from app.deps import today as study_today
 from app.main import app
 from app.models import Problem, ReviewState
 
@@ -37,8 +38,10 @@ def client(db_session):
 @pytest.fixture
 def sample_problems(db_session):
     """Three problems: one never attempted, two solved and due for review."""
-    from datetime import date, timedelta
-    today = date.today()
+    from datetime import timedelta
+    # The app's own notion of today, never date.today(): the two differ for part of every
+    # evening east of UTC, which used to make these tests fail after 20:00 EDT.
+    today = study_today()
     rows = [
         Problem(number=1, title="Two Sum", difficulty="Easy", chapter_num=1,
                 chapter="Arrays & Hashing", url="", kind="problem"),

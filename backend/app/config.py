@@ -15,6 +15,11 @@ class Settings(BaseSettings):
     deepseek_model: str = "deepseek-flash"
     deepseek_base_url: str = "https://api.deepseek.com"
 
+    # Which timezone defines "today". Empty means the machine's local zone, which is what
+    # you want for a personal tracker: practising at 9pm should count towards that evening,
+    # not towards tomorrow. Set e.g. TIMEZONE=America/Toronto to pin it.
+    timezone: str = ""
+
     api_key: str = ""                 # empty = no auth (local dev)
     daily_review_cap: int = 4         # max reviews per day
     daily_new_cap: int = 3            # max new problems per day

@@ -3,13 +3,13 @@ from collections import Counter
 from datetime import timedelta
 
 from fastapi import APIRouter, Depends
-from sqlalchemy import func, select
+from sqlalchemy import select
 from sqlalchemy.orm import Session, selectinload
 
 from ..complexity import EXPECTED, check as check_complexity
 from ..constants import MISTAKE_TAGS
 from ..database import get_db
-from ..deps import today as get_today
+from ..deps import local_date, today as get_today
 from ..models import Attempt, Problem
 from ..patterns import PATTERN_TEMPLATE, PATTERNS, describe, label, patterns_for
 from ..schemas import ChapterStat, ComplexityStat, MistakeStat, PatternStat, StatsOut
@@ -20,13 +20,16 @@ MASTERED_INTERVAL = 21   # an interval of 21+ days counts as "mastered"
 
 
 def _streak(db: Session) -> int:
-    """Consecutive days with at least one attempt, counting back from today."""
+    """Consecutive days with at least one attempt, counting back from today.
+
+    Grouping happens in Python rather than with SQL's date(), because created_at is stored
+    in UTC: an evening session east of UTC would otherwise be filed under the next day and
+    silently break the streak.
+    """
     days = {
-        d for (d,) in db.execute(
-            select(func.date(Attempt.created_at)).distinct()
-        ) if d
+        local_date(a.created_at).isoformat()
+        for a in db.scalars(select(Attempt))
     }
-    days = {str(d)[:10] for d in days}
     if not days:
         return 0
     cur = get_today()
@@ -54,7 +57,7 @@ def overview(db: Session = Depends(get_db)):
 
     attempts = list(db.scalars(select(Attempt)))
     week_ago = d - timedelta(days=7)
-    attempts_7d = sum(1 for a in attempts if a.created_at.date() >= week_ago)
+    attempts_7d = sum(1 for a in attempts if local_date(a.created_at) >= week_ago)
     timed = [a.seconds for a in attempts if a.seconds > 0]
 
     by_chapter: list[ChapterStat] = []
@@ -100,7 +103,7 @@ def heatmap(db: Session = Depends(get_db), days: int = 90):
     start = get_today() - timedelta(days=days)
     counter: Counter[str] = Counter()
     for a in db.scalars(select(Attempt)):
-        day = a.created_at.date()
+        day = local_date(a.created_at)
         if day >= start:
             counter[day.isoformat()] += 1
     return [{"date": k, "count": v} for k, v in sorted(counter.items())]
