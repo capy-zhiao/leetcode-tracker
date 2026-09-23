@@ -57,6 +57,7 @@ class DailyQueueOut(BaseModel):
     templates: list[QueueItemOut]
     total_due: int
     deferred: int
+    review_cap: int              # reviews per day, for "N days to clear the backlog"
 
 
 class AttemptIn(BaseModel):

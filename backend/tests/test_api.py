@@ -131,3 +131,24 @@ def test_mock_start(client, sample_problems):
     body = r.json()
     assert body["problem"]["difficulty"] == "Medium"
     assert body["minutes"] == 35
+
+
+def test_forecast_counts_problems_but_not_template_drills(client, sample_problems, db_session):
+    """Drills have their own slot; counting them would overstate the review load."""
+    from app.models import Problem, ReviewState
+    from app.deps import today as study_today
+    t = Problem(number=9001, title="Union-Find", difficulty="Hard", chapter_num=11,
+                chapter="Graphs", url="", kind="template")
+    db_session.add(t)
+    db_session.flush()
+    db_session.add(ReviewState(problem_id=t.id, interval_days=0,
+                               due=study_today() - timedelta(days=3)))
+    db_session.commit()
+
+    today_row = client.get("/review/forecast").json()[0]
+    assert today_row["overdue"] == 1        # 994 only; 200 is due today, not overdue
+    assert today_row["count"] == 2          # 994 overdue + 200 due today; drill excluded
+
+
+def test_queue_reports_the_review_cap(client, sample_problems):
+    assert client.get("/review/today", params={"review_cap": 3}).json()["review_cap"] == 3

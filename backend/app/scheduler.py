@@ -175,11 +175,21 @@ def build_today(
 
 
 def forecast(db: Session, today: date | None = None, days: int = 14) -> list[dict]:
-    """Review load for the next N days, so the UI can warn you before a pile-up."""
+    """Review load for the next N days, so the UI can warn you before a pile-up.
+
+    Problems only: template drills have their own one-a-day slot and never compete for
+    the review cap, so counting them here would overstate the load the Review section
+    actually hands you.
+    """
     today = today or date.today()
     counts = {today + timedelta(days=i): 0 for i in range(days)}
     overdue = 0
-    for st in db.scalars(select(ReviewState).where(ReviewState.due.is_not(None))):
+    stmt = (
+        select(ReviewState)
+        .join(Problem, Problem.id == ReviewState.problem_id)
+        .where(ReviewState.due.is_not(None), Problem.kind == "problem")
+    )
+    for st in db.scalars(stmt):
         if st.due < today:
             overdue += 1
         elif st.due in counts:

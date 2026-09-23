@@ -4,6 +4,7 @@ from datetime import datetime, timezone
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
 
+from ..config import settings
 from ..complexity import COMPLEXITY_CHOICES, check as check_complexity
 from ..database import get_db
 from ..deps import ensure_state, get_problem, today as get_today
@@ -31,6 +32,7 @@ def today_queue(
         date=d,
         reviews=q.reviews, new_problems=q.new_problems, templates=q.templates,
         total_due=q.total_due, deferred=q.deferred,
+        review_cap=review_cap if review_cap is not None else settings.daily_review_cap,
     )
 
 

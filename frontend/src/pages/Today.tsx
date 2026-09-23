@@ -2,6 +2,7 @@
 // J / K walk the queue, Enter opens the highlighted item — no mouse needed.
 import { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
+import LoadChart, { type ForecastRow } from '../components/LoadChart'
 import ProblemRow, { rowHref } from '../components/ProblemRow'
 import { api } from '../lib/api'
 import { useHotkeys } from '../lib/useHotkeys'
@@ -10,7 +11,7 @@ import type { DailyQueue, QueueItem } from '../lib/types'
 export default function Today() {
   // data / loading / error — the standard trio for any page that fetches
   const [queue, setQueue] = useState<DailyQueue | null>(null)
-  const [forecast, setForecast] = useState<{ date: string; count: number }[]>([])
+  const [forecast, setForecast] = useState<ForecastRow[]>([])
   const [error, setError] = useState('')
   const [cursor, setCursor] = useState(-1)      // -1 = nothing highlighted yet
   const navigate = useNavigate()
@@ -58,7 +59,6 @@ export default function Today() {
   )
   if (!queue) return <p className="text-slate-400">Loading…</p>
 
-  const maxCount = Math.max(1, ...forecast.map((f) => f.count))
   const selected = flat[cursor]?.problem.number
 
   return (
@@ -82,19 +82,7 @@ export default function Today() {
       <Section title="🔧 Template drill" hint="five minutes of blind writing before you start"
                items={queue.templates} selected={selected} />
 
-      <div className="card">
-        <h2 className="font-medium mb-3">📈 Review load, next 14 days</h2>
-        <div className="flex items-end gap-1 h-24">
-          {forecast.map((f) => (
-            <div key={f.date} className="flex-1 flex flex-col items-center gap-1"
-                 title={`${f.date}: ${f.count} due`}>
-              <div className="w-full rounded-t bg-slate-300"
-                   style={{ height: `${(f.count / maxCount) * 100}%` }} />
-              <span className="text-[9px] text-slate-400">{f.date.slice(8)}</span>
-            </div>
-          ))}
-        </div>
-      </div>
+      <LoadChart rows={forecast} reviewCap={queue.review_cap} />
     </div>
   )
 }

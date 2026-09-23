@@ -47,6 +47,7 @@ export interface DailyQueue {
   templates: QueueItem[]
   total_due: number
   deferred: number
+  review_cap: number
 }
 
 export interface MistakeTag { id: string; label: string; hint: string }
