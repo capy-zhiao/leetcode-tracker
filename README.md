@@ -3,7 +3,7 @@
 [![CI](https://github.com/capy-zhiao/leetcode-tracker/actions/workflows/ci.yml/badge.svg)](https://github.com/capy-zhiao/leetcode-tracker/actions/workflows/ci.yml)
 ![Python](https://img.shields.io/badge/python-3.12%20%7C%203.13-blue)
 ![React](https://img.shields.io/badge/react-18-61dafb)
-![Tests](https://img.shields.io/badge/tests-107-brightgreen)
+![Tests](https://img.shields.io/badge/tests-116-brightgreen)
 
 A spaced-repetition tracker for the **NeetCode 250**: it decides what to practise each day,
 schedules reviews on a forgetting curve, tracks your personal bug patterns, and runs timed
@@ -93,7 +93,16 @@ priority = days_overdue      x 1.0
          + (20 - chapter)    x 0.1     <- foundations before advanced topics
 ```
 
-**3. New problems advance in roadmap order** and are interleaved with reviews.
+**3. The day is interleaved, not just ranked.** Ranking alone clusters: failures pile up in
+whichever chapter was hardest, and on the first day of real use the top four reviews were
+all graph problems. Four of a kind in a row means you know the technique before reading
+the problem — skipping the recognition step an interview actually tests. So each chapter
+and each primary pattern gets at most two slots a day, and anything skipped backfills
+empty slots in priority order, so the limits change *which* problems you get, never how
+many. Both limits are needed: capping patterns alone still gave four graph problems,
+because Course Schedule is topological sort rather than grid DFS.
+
+**4. New problems advance in roadmap order** and are interleaved with reviews.
 
 ## 🚀 Running it
 

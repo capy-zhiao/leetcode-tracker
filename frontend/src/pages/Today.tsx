@@ -75,7 +75,7 @@ export default function Today() {
         </p>
       </div>
 
-      <Section title="🔁 Review" hint="ranked by overdue days, past failures, difficulty and chapter"
+      <Section title="🔁 Review" hint="ranked by priority · at most 2 per chapter or pattern, so the day stays mixed"
                items={queue.reviews} selected={selected} />
       <Section title="🆕 New" hint="next up in NeetCode roadmap order"
                items={queue.new_problems} selected={selected} />

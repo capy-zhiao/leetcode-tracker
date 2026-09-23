@@ -8,9 +8,16 @@ Every day you get three things:
 Key design decision: **overflow defers**. Twenty problems may be due on a day you can only
 finish four. Rather than dumping all twenty, the queue hands you the N that matter most and
 rolls the rest forward.
+
+Second decision: **the day is interleaved**. Ranking alone clusters: failures concentrate
+in whichever chapter was hardest, so the top four can all be graph problems. Four of the
+same kind in a row means you know the technique before reading the problem, which skips
+the step an interview actually tests — recognising it. pick_diverse() caps each chapter
+and each primary pattern per day, then backfills so no slot goes unused.
 """
 from __future__ import annotations
 
+from collections import Counter
 from dataclasses import dataclass, field
 from datetime import date, timedelta
 
@@ -19,6 +26,7 @@ from sqlalchemy.orm import Session, selectinload
 
 from .config import settings
 from .models import Problem, ReviewState
+from .patterns import patterns_for
 from .srs import priority
 
 
@@ -37,6 +45,57 @@ class DailyQueue:
     templates: list[QueueItem] = field(default_factory=list)
     total_due: int = 0          # how many are actually due (can exceed len(reviews))
     deferred: int = 0           # how many were pushed to a later day by the cap
+
+
+def primary_pattern(problem) -> str | None:
+    """The first pattern tag — the technique the problem is mainly testing."""
+    tags = problem.patterns or patterns_for(problem.number, problem.chapter_num)
+    return tags[0] if tags else None
+
+
+def pick_diverse(
+    items: list[QueueItem],
+    cap: int,
+    per_chapter: int,
+    per_pattern: int,
+) -> list[QueueItem]:
+    """Take up to `cap` items, highest priority first, spreading across chapters and patterns.
+
+    `items` must already be sorted by priority, descending. An item is skipped when its
+    chapter or its primary pattern already has its quota for the day; a limit of 0 means
+    unlimited. Skipped items then backfill any slot still empty, in priority order, so the
+    rules only ever change which problems you get — never how many.
+
+    Pure function (no database, no clock), so it is unit tested directly.
+    """
+    picked: list[QueueItem] = []
+    skipped: list[QueueItem] = []
+    by_chapter: Counter[int] = Counter()
+    by_pattern: Counter[str] = Counter()
+
+    for item in items:
+        if len(picked) >= cap:
+            break
+        ch = item.problem.chapter_num
+        pat = primary_pattern(item.problem)
+        chapter_full = per_chapter > 0 and by_chapter[ch] >= per_chapter
+        pattern_full = per_pattern > 0 and pat is not None and by_pattern[pat] >= per_pattern
+        if chapter_full or pattern_full:
+            skipped.append(item)
+            continue
+        picked.append(item)
+        by_chapter[ch] += 1
+        if pat is not None:
+            by_pattern[pat] += 1
+
+    # Everything skipped outranks everything not yet visited, so backfill from it first.
+    for item in skipped:
+        if len(picked) >= cap:
+            break
+        picked.append(item)
+
+    picked.sort(key=lambda i: i.priority_score, reverse=True)
+    return picked
 
 
 def _load(db: Session, kind: str) -> list[Problem]:
@@ -76,8 +135,11 @@ def build_today(
         ))
     due_items.sort(key=lambda i: i.priority_score, reverse=True)
     queue.total_due = len(due_items)
-    queue.reviews = due_items[:review_cap]
-    queue.deferred = max(0, len(due_items) - review_cap)
+    queue.reviews = pick_diverse(
+        due_items, review_cap,
+        settings.daily_per_chapter_cap, settings.daily_per_pattern_cap,
+    )
+    queue.deferred = len(due_items) - len(queue.reviews)
 
     # --- 2. New problems, in roadmap order ---
     fresh = [p for p in problems if p.state is None or p.state.due is None]

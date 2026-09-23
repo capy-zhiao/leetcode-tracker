@@ -23,6 +23,11 @@ class Settings(BaseSettings):
     api_key: str = ""                 # empty = no auth (local dev)
     daily_review_cap: int = 4         # max reviews per day
     daily_new_cap: int = 3            # max new problems per day
+    # Interleaving: at most this many reviews per chapter / per primary pattern each day.
+    # 0 disables the limit. Unused slots are always backfilled, so a limit never shrinks
+    # the day — it only changes which problems fill it.
+    daily_per_chapter_cap: int = 2
+    daily_per_pattern_cap: int = 2
     cors_origins: str = "http://localhost:5173,http://127.0.0.1:5173"
 
     @property
