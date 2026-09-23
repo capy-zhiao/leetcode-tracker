@@ -28,6 +28,12 @@ class Settings(BaseSettings):
     # the day — it only changes which problems fill it.
     daily_per_chapter_cap: int = 2
     daily_per_pattern_cap: int = 2
+    # New problems: one per chapter a day, so a fresh day samples several topics instead of
+    # three in a row from the same chapter. Backfilled like reviews.
+    daily_new_per_chapter_cap: int = 1
+    # Hold every Hard back until the Easy/Medium problems are done — the same rule as the
+    # manual study plan. Set to false when you are ready to start on Hards.
+    new_hard_last: bool = True
     cors_origins: str = "http://localhost:5173,http://127.0.0.1:5173"
 
     @property

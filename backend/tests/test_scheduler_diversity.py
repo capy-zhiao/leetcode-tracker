@@ -111,3 +111,58 @@ def test_today_endpoint_interleaves_chapters(client, db_session):
     q = client.get("/review/today", params={"review_cap": 3}).json()
     assert [i["problem"]["number"] for i in q["reviews"]] == [261, 200, 128]
     assert q["deferred"] == 1
+
+
+# --- new problems ---
+
+from app.scheduler import new_problem_order
+
+
+def fresh(number, chapter, difficulty="Medium", pattern="x"):
+    return SimpleNamespace(number=number, chapter_num=chapter,
+                           difficulty=difficulty, patterns=[pattern])
+
+
+def test_keeps_input_order_rather_than_resorting_by_score():
+    """New problems all score 0; the roadmap order must survive the pick."""
+    items = [QueueItem(problem=fresh(n, ch, pattern=f"p{n}"), reason="new")
+             for n, ch in [(75, 1), (122, 1), (18, 2), (209, 3)]]
+    got = pick_diverse(items, cap=3, per_chapter=1, per_pattern=0)
+    assert numbers(got) == [75, 18, 209]
+
+
+def test_hard_problems_sort_after_every_easy_or_medium():
+    ps = [fresh(41, 1, "Hard"), fresh(75, 1), fresh(42, 2, "Hard"), fresh(88, 2, "Easy")]
+    ps.sort(key=new_problem_order)
+    assert [p.number for p in ps] == [75, 88, 41, 42]
+
+
+def test_hard_last_can_be_switched_off():
+    ps = [fresh(75, 1), fresh(41, 1, "Hard")]
+    ps.sort(key=lambda p: new_problem_order(p, hard_last=False))
+    assert [p.number for p in ps] == [41, 75]
+
+
+def test_today_new_problems_span_chapters_and_skip_hards(client, db_session):
+    for number, chapter, diff in [
+        (41, 1, "Hard"), (75, 1, "Medium"), (122, 1, "Medium"),
+        (18, 2, "Medium"), (26, 2, "Easy"),
+        (209, 3, "Medium"),
+    ]:
+        db_session.add(Problem(number=number, title=f"P{number}", difficulty=diff,
+                               chapter_num=chapter, chapter=f"Ch{chapter}", url="",
+                               kind="problem"))
+    db_session.commit()
+
+    q = client.get("/review/today", params={"new_cap": 3}).json()
+    assert [i["problem"]["number"] for i in q["new_problems"]] == [75, 18, 209]
+
+
+def test_new_backfills_when_only_one_chapter_is_left(client, db_session):
+    for number in (169, 229, 238):
+        db_session.add(Problem(number=number, title=f"P{number}", difficulty="Medium",
+                               chapter_num=1, chapter="Ch1", url="", kind="problem"))
+    db_session.commit()
+
+    q = client.get("/review/today", params={"new_cap": 3}).json()
+    assert len(q["new_problems"]) == 3

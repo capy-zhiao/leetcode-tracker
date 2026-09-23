@@ -2,7 +2,7 @@
 
 Every day you get three things:
   1. Due reviews  — what SRS says is due, ranked by priority(), capped at N
-  2. New problems — the next items in NeetCode roadmap order (chapter, then number)
+  2. New problems — roadmap order (chapter, then number), one per chapter, Hards last
   3. A template   — one of the 15 algorithm templates, also on an SRS schedule
 
 Key design decision: **overflow defers**. Twenty problems may be due on a day you can only
@@ -59,21 +59,22 @@ def pick_diverse(
     per_chapter: int,
     per_pattern: int,
 ) -> list[QueueItem]:
-    """Take up to `cap` items, highest priority first, spreading across chapters and patterns.
+    """Take up to `cap` items in the given order, spreading across chapters and patterns.
 
-    `items` must already be sorted by priority, descending. An item is skipped when its
-    chapter or its primary pattern already has its quota for the day; a limit of 0 means
-    unlimited. Skipped items then backfill any slot still empty, in priority order, so the
-    rules only ever change which problems you get — never how many.
+    `items` must already be in preference order — by priority for reviews, by roadmap
+    position for new problems — and the result keeps that order. An item is skipped when
+    its chapter or its primary pattern already has its quota for the day; a limit of 0
+    means unlimited. Skipped items then backfill any slot still empty, in that same order,
+    so the rules only ever change which problems you get — never how many.
 
     Pure function (no database, no clock), so it is unit tested directly.
     """
-    picked: list[QueueItem] = []
-    skipped: list[QueueItem] = []
+    picked: list[tuple[int, QueueItem]] = []
+    skipped: list[tuple[int, QueueItem]] = []
     by_chapter: Counter[int] = Counter()
     by_pattern: Counter[str] = Counter()
 
-    for item in items:
+    for pos, item in enumerate(items):
         if len(picked) >= cap:
             break
         ch = item.problem.chapter_num
@@ -81,21 +82,27 @@ def pick_diverse(
         chapter_full = per_chapter > 0 and by_chapter[ch] >= per_chapter
         pattern_full = per_pattern > 0 and pat is not None and by_pattern[pat] >= per_pattern
         if chapter_full or pattern_full:
-            skipped.append(item)
+            skipped.append((pos, item))
             continue
-        picked.append(item)
+        picked.append((pos, item))
         by_chapter[ch] += 1
         if pat is not None:
             by_pattern[pat] += 1
 
     # Everything skipped outranks everything not yet visited, so backfill from it first.
-    for item in skipped:
+    for entry in skipped:
         if len(picked) >= cap:
             break
-        picked.append(item)
+        picked.append(entry)
 
-    picked.sort(key=lambda i: i.priority_score, reverse=True)
-    return picked
+    picked.sort(key=lambda e: e[0])
+    return [item for _, item in picked]
+
+
+def new_problem_order(problem, hard_last: bool = True) -> tuple:
+    """Sort key for unstarted problems: roadmap order, optionally with every Hard last."""
+    held_back = hard_last and problem.difficulty == "Hard"
+    return (held_back, problem.chapter_num, problem.number)
 
 
 def _load(db: Session, kind: str) -> list[Problem]:
@@ -141,10 +148,13 @@ def build_today(
     )
     queue.deferred = len(due_items) - len(queue.reviews)
 
-    # --- 2. New problems, in roadmap order ---
+    # --- 2. New problems: roadmap order, one per chapter, Hards held back ---
     fresh = [p for p in problems if p.state is None or p.state.due is None]
-    fresh.sort(key=lambda p: (p.chapter_num, p.number))
-    queue.new_problems = [QueueItem(problem=p, reason="new") for p in fresh[:new_cap]]
+    fresh.sort(key=lambda p: new_problem_order(p, settings.new_hard_last))
+    queue.new_problems = pick_diverse(
+        [QueueItem(problem=p, reason="new") for p in fresh], new_cap,
+        settings.daily_new_per_chapter_cap, settings.daily_per_pattern_cap,
+    )
 
     # --- 3. One template: the due one, otherwise whichever has gone longest untouched ---
     templates = _load(db, "template")
