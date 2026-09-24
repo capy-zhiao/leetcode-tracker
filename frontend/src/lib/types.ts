@@ -93,6 +93,7 @@ export interface ComplexityVerdict {
   optimal_space: string
   is_optimal: boolean
   explanation: string
+  model?: string          // which model judged it
 }
 
 export interface ComplexityCheck {

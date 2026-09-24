@@ -3,7 +3,7 @@
 [![CI](https://github.com/capy-zhiao/leetcode-tracker/actions/workflows/ci.yml/badge.svg)](https://github.com/capy-zhiao/leetcode-tracker/actions/workflows/ci.yml)
 ![Python](https://img.shields.io/badge/python-3.12%20%7C%203.13-blue)
 ![React](https://img.shields.io/badge/react-18-61dafb)
-![Tests](https://img.shields.io/badge/tests-166-brightgreen)
+![Tests](https://img.shields.io/badge/tests-170-brightgreen)
 
 A spaced-repetition tracker for the **NeetCode 250**: it decides what to practise each day,
 schedules reviews on a forgetting curve, tracks your personal bug patterns, and runs timed
@@ -161,7 +161,13 @@ DEEPSEEK_MODEL=deepseek-flash        # or deepseek-v4-pro
 DEEPSEEK_BASE_URL=https://api.deepseek.com   # or an OpenAI-compatible relay
 DEEPSEEK_THINKING=true               # thinking mode; reasoning tokens bill as output
 DEEPSEEK_REASONING_EFFORT=high       # low | high | max
+DEEPSEEK_COMPLEXITY_MODEL=deepseek-v4-flash   # optional: cheaper model for the complexity check
 ```
+
+Each task can run on its own model: the complexity check is a small, mechanical judgement
+and runs well on flash, while interview questions and answer grading stay on the default
+model. On four real checks (including two deliberately wrong answers) flash matched pro's
+verdicts at about a twentieth of the cost. Each stored verdict records which model made it.
 
 **AI complexity check.** The built-in check compares your stated big-O with the textbook
 solution, so an honest O(n²) analysis of a brute-force answer is marked wrong. With a

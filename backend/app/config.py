@@ -13,6 +13,10 @@ class Settings(BaseSettings):
     anthropic_model: str = "claude-opus-5"
     deepseek_api_key: str = ""
     deepseek_model: str = "deepseek-flash"
+    # Optional cheaper model for the complexity check — judging thirty lines of code does
+    # not need the strongest model. Empty = use deepseek_model. Interview questions and
+    # answer grading always use deepseek_model.
+    deepseek_complexity_model: str = ""
     deepseek_base_url: str = "https://api.deepseek.com"
     # Thinking mode (DeepSeek's default is on). Reasoning tokens are billed as output.
     deepseek_thinking: bool = True

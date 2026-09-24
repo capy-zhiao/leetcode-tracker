@@ -160,7 +160,7 @@ def ai_complexity(attempt_id: int, db: Session = Depends(get_db)):
     if verdict is None:
         raise HTTPException(502, "The AI call failed — the backend log has the reason")
 
-    attempt.complexity_ai = verdict.model_dump()
+    attempt.complexity_ai = {**verdict.model_dump(), "model": llm.model_name("complexity")}
     attempt.complexity_ok = verdict.time_correct and verdict.space_correct
     db.commit()
     db.refresh(attempt)

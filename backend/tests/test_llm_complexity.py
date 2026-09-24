@@ -89,7 +89,11 @@ class StubProvider:
     def __init__(self, verdict):
         self.verdict, self.prompts = verdict, []
 
-    def complete(self, prompt, schema):
+    def model_for(self, task="default"):
+        return f"stub-{task}"
+
+    def complete(self, prompt, schema, task="default"):
+        self.tasks = getattr(self, "tasks", []) + [task]
         self.prompts.append(prompt)
         return self.verdict
 
@@ -218,3 +222,30 @@ def test_nested_item_fields_are_described(monkeypatch):
     provider.complete("P", FollowUpBundle)
     content = fake.calls[0]["messages"][0]["content"]
     assert 'Each element of "followups"' in content and '"hint" (string)' in content
+
+
+
+# ---------------------------------------------------------------- per-task models
+
+def test_complexity_can_run_on_a_cheaper_model(monkeypatch):
+    monkeypatch.setattr(settings, "deepseek_model", "deepseek-v4-pro")
+    monkeypatch.setattr(settings, "deepseek_complexity_model", "deepseek-v4-flash")
+    provider, fake = make_provider(monkeypatch, VERDICT_JSON)
+    provider.complete("p", ComplexityVerdict, task="complexity")
+    provider.complete("p", ComplexityVerdict, task="interview")
+    assert [c["model"] for c in fake.calls] == ["deepseek-v4-flash", "deepseek-v4-pro"]
+
+
+def test_empty_override_falls_back_to_the_default_model(monkeypatch):
+    monkeypatch.setattr(settings, "deepseek_model", "deepseek-v4-pro")
+    monkeypatch.setattr(settings, "deepseek_complexity_model", "")
+    provider, _ = make_provider(monkeypatch, VERDICT_JSON)
+    assert provider.model_for("complexity") == "deepseek-v4-pro"
+
+
+def test_stored_verdict_records_the_model_that_judged_it(client, sample_problems, stub):
+    p = stub(verdict())
+    aid = submit(client, 200, t="O(m*n)", s="O(m*n)")
+    body = client.post(f"/review/attempts/{aid}/complexity-ai").json()
+    assert body["complexity_ai"]["model"] == "stub-complexity"
+    assert p.tasks == ["complexity"]

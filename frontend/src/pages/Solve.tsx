@@ -356,6 +356,7 @@ function AiComplexity({
         )}
       </p>
       <p className="text-indigo-900/80">{verdict.explanation}</p>
+      {verdict.model && <p className="text-[11px] text-indigo-900/50">judged by {verdict.model}</p>}
     </div>
   )
 }

@@ -147,7 +147,12 @@ class _Provider:
 
     name = "none"
 
-    def complete(self, prompt: str, schema: type[T]) -> T | None:  # pragma: no cover - interface
+    def model_for(self, task: str = "default") -> str:  # pragma: no cover - interface
+        raise NotImplementedError
+
+    def complete(
+        self, prompt: str, schema: type[T], task: str = "default",
+    ) -> T | None:  # pragma: no cover - interface
         raise NotImplementedError
 
 
@@ -160,11 +165,14 @@ class AnthropicProvider(_Provider):
         self._anthropic = anthropic
         self._client = anthropic.Anthropic(api_key=settings.anthropic_api_key)
 
-    def complete(self, prompt: str, schema: type[T]) -> T | None:
+    def model_for(self, task: str = "default") -> str:
+        return settings.anthropic_model
+
+    def complete(self, prompt: str, schema: type[T], task: str = "default") -> T | None:
         a = self._anthropic
         try:
             res = self._client.messages.parse(
-                model=settings.anthropic_model,
+                model=self.model_for(task),
                 max_tokens=4000,
                 thinking={"type": "adaptive"},
                 messages=[{"role": "user", "content": prompt}],
@@ -216,7 +224,12 @@ class DeepSeekProvider(_Provider):
             }
         return {"max_tokens": 4000, "extra_body": {"thinking": {"type": "disabled"}}}
 
-    def complete(self, prompt: str, schema: type[T]) -> T | None:
+    def model_for(self, task: str = "default") -> str:
+        if task == "complexity" and settings.deepseek_complexity_model:
+            return settings.deepseek_complexity_model
+        return settings.deepseek_model
+
+    def complete(self, prompt: str, schema: type[T], task: str = "default") -> T | None:
         o = self._openai
         fields = describe_fields(schema)
         nested = ""
@@ -231,7 +244,7 @@ class DeepSeekProvider(_Provider):
         )
         try:
             res = self._client.chat.completions.create(
-                model=settings.deepseek_model,
+                model=self.model_for(task),
                 response_format={"type": "json_object"},
                 messages=[{"role": "user", "content": full}],
                 **self.request_options(),
@@ -241,7 +254,8 @@ class DeepSeekProvider(_Provider):
             if u is not None:
                 details = getattr(u, "completion_tokens_details", None)
                 log.info(
-                    "DeepSeek usage: prompt=%s completion=%s (reasoning=%s)",
+                    "DeepSeek usage [%s, %s]: prompt=%s completion=%s (reasoning=%s)",
+                    task, self.model_for(task),
                     getattr(u, "prompt_tokens", "?"), getattr(u, "completion_tokens", "?"),
                     getattr(details, "reasoning_tokens", "?") if details else "?",
                 )
@@ -295,6 +309,12 @@ def is_enabled() -> bool:
 def provider_name() -> str:
     p = get_provider()
     return p.name if p else "none"
+
+
+def model_name(task: str = "default") -> str:
+    """Which model a task runs on — stored with results so a verdict says who judged it."""
+    p = get_provider()
+    return p.model_for(task) if p else ""
 
 
 # ---------------------------------------------------------------- public API
@@ -410,7 +430,7 @@ Rules:
   wrong for O(n) unless the code really is quadratic.
 - Name your variables in the explanation (n = ..., V = ..., E = ...)."""
 
-    return provider.complete(prompt, ComplexityVerdict)
+    return provider.complete(prompt, ComplexityVerdict, task="complexity")
 
 
 def interview_followups(
@@ -450,7 +470,7 @@ Ask the {n} follow-up questions you would ask about THIS code in a real intervie
 - For each, give the key points a strong answer covers (two or three sentences). These
   are hidden from the candidate until they answer."""
 
-    result = provider.complete(prompt, FollowUpBundle)
+    result = provider.complete(prompt, FollowUpBundle, task="interview")
     return result.followups[:n] if result else []
 
 
@@ -493,4 +513,4 @@ yourself instead of deducting for the disagreement. Where the question is genuin
 ambiguous (for example an input the problem's constraints rule out), accept any
 well-reasoned position and say that it is ambiguous."""
 
-    return provider.complete(prompt, AnswerGrade)
+    return provider.complete(prompt, AnswerGrade, task="interview")

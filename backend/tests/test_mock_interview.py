@@ -14,7 +14,11 @@ class StubProvider:
     def __init__(self, replies):
         self.replies, self.prompts = replies, []
 
-    def complete(self, prompt, schema):
+    def model_for(self, task="default"):
+        return f"stub-{task}"
+
+    def complete(self, prompt, schema, task="default"):
+        self.tasks = getattr(self, "tasks", []) + [task]
         self.prompts.append((schema, prompt))
         return self.replies.get(schema)
 
@@ -135,3 +139,11 @@ def test_failed_grading_is_502_and_saves_nothing(client, problem_746, stub, db_s
 def test_score_is_bounded():
     with pytest.raises(Exception):
         AnswerGrade(score=5, feedback="", missing=[], model_answer="")
+
+
+
+def test_interview_questions_and_grading_use_the_interview_task(client, problem_746, stub):
+    s = stub({FollowUpBundle: QUESTIONS, AnswerGrade: STRONG})
+    qid = start(client).json()[0]["id"]
+    client.post(f"/mock/qa/{qid}/answer", json={"answer": "two variables"})
+    assert s.tasks == ["interview", "interview"]
