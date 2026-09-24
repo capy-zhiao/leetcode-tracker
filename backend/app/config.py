@@ -34,6 +34,9 @@ class Settings(BaseSettings):
     # Hold every Hard back until the Easy/Medium problems are done — the same rule as the
     # manual study plan. Set to false when you are ready to start on Hards.
     new_hard_last: bool = True
+    # Finish the NeetCode 150 before any of the 250 additions, which then come in a fixed
+    # shuffled order rather than chapter by chapter.
+    new_neetcode150_first: bool = True
     cors_origins: str = "http://localhost:5173,http://127.0.0.1:5173"
 
     @property

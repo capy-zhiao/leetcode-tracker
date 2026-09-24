@@ -17,6 +17,7 @@ from sqlalchemy import select
 
 from app.database import Base, SessionLocal, engine
 from app.models import Problem, ReviewState
+from app.neetcode150 import NEETCODE_150
 from app.patterns import patterns_for
 from app.srs import DEFAULT_EASE
 
@@ -83,7 +84,7 @@ def main() -> None:
                     number=item["number"], title=item["title"],
                     difficulty=item["difficulty"], chapter_num=item["chapter_num"],
                     chapter=item["chapter"], url=item["url"],
-                    in_neetcode150=item["in_neetcode150"], kind="problem",
+                    in_neetcode150=item["number"] in NEETCODE_150, kind="problem",
                     notes=item["notes"], code=item["code"],
                     patterns=patterns_for(item["number"], item["chapter_num"]),
                 )
@@ -97,6 +98,9 @@ def main() -> None:
                 # Pattern tags are derived data — always refresh them so retagging a
                 # problem in patterns.py takes effect on the next run.
                 p.patterns = patterns_for(item["number"], item["chapter_num"])
+                # Same for the 150 flag: the official list wins over whatever the
+                # markdown notes implied when the row was first created.
+                p.in_neetcode150 = item["number"] in NEETCODE_150
                 if item["notes"] and not p.notes:
                     p.notes = item["notes"]
                 if item["code"] and not p.code:

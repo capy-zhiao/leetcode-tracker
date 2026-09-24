@@ -115,12 +115,17 @@ def test_today_endpoint_interleaves_chapters(client, db_session):
 
 # --- new problems ---
 
-from app.scheduler import new_problem_order
+from app.neetcode150 import NEETCODE_150, NEETCODE_150_BY_CHAPTER
+from app.scheduler import new_problem_tiers, pick_tiered, shuffle_key
 
 
-def fresh(number, chapter, difficulty="Medium", pattern="x"):
-    return SimpleNamespace(number=number, chapter_num=chapter,
-                           difficulty=difficulty, patterns=[pattern])
+def fresh(number, chapter, difficulty="Medium", pattern="x", nc150=True):
+    return SimpleNamespace(number=number, chapter_num=chapter, difficulty=difficulty,
+                           patterns=[pattern], in_neetcode150=nc150)
+
+
+def as_items(tiers):
+    return [[QueueItem(problem=p, reason="new") for p in t] for t in tiers]
 
 
 def test_keeps_input_order_rather_than_resorting_by_score():
@@ -131,16 +136,66 @@ def test_keeps_input_order_rather_than_resorting_by_score():
     assert numbers(got) == [75, 18, 209]
 
 
-def test_hard_problems_sort_after_every_easy_or_medium():
-    ps = [fresh(41, 1, "Hard"), fresh(75, 1), fresh(42, 2, "Hard"), fresh(88, 2, "Easy")]
-    ps.sort(key=new_problem_order)
-    assert [p.number for p in ps] == [75, 88, 41, 42]
+def test_tiers_are_150_then_additions_then_hards():
+    ps = [
+        fresh(88, 2, "Easy", nc150=False),       # addition
+        fresh(42, 2, "Hard"),                    # 150 Hard
+        fresh(746, 13, "Easy"),                  # 150
+        fresh(4, 5, "Hard", nc150=False),        # addition Hard (not really, but a test)
+        fresh(198, 13),                          # 150
+    ]
+    tiers = new_problem_tiers(ps)
+    assert [[p.number for p in t] for t in tiers] == [[746, 198], [88], [42], [4]]
 
 
-def test_hard_last_can_be_switched_off():
-    ps = [fresh(75, 1), fresh(41, 1, "Hard")]
-    ps.sort(key=lambda p: new_problem_order(p, hard_last=False))
-    assert [p.number for p in ps] == [41, 75]
+def test_150_tier_follows_neetcode_order_not_problem_number():
+    """1-D DP is 70, 746, 198, 213, 5 ... — by number 5 would jump the queue."""
+    ps = [fresh(n, 13) for n in (5, 213, 198, 746)]
+    assert [p.number for p in new_problem_tiers(ps)[0]] == [746, 198, 213, 5]
+
+
+def test_additions_are_shuffled_but_stable():
+    ps = [fresh(n, 1, nc150=False) for n in (169, 229, 304, 560, 705, 706, 912, 1929)]
+    order = [p.number for p in new_problem_tiers(ps)[0]]
+    assert order != sorted(order), "additions should not come in number order"
+    assert order == sorted(order, key=shuffle_key)
+    # Finishing one must not reshuffle the rest
+    rest = [p.number for p in new_problem_tiers([p for p in ps if p.number != order[0]])[0]]
+    assert rest == order[1:]
+
+
+def test_150_is_exhausted_before_any_addition_even_in_one_chapter():
+    """Chapter spreading must not pull an addition in while 150 problems remain."""
+    ps = [fresh(n, 13) for n in (746, 198, 213)] + \
+         [fresh(n, ch, nc150=False) for n, ch in ((88, 2), (219, 3))]
+    got = pick_tiered(as_items(new_problem_tiers(ps)), cap=3, per_chapter=1, per_pattern=0)
+    assert numbers(got) == [746, 198, 213]
+
+
+def test_additions_fill_the_slots_the_150_cannot():
+    ps = [fresh(746, 13)] + [fresh(n, ch, nc150=False) for n, ch in ((88, 2), (219, 3))]
+    got = pick_tiered(as_items(new_problem_tiers(ps)), cap=3, per_chapter=1, per_pattern=0)
+    assert numbers(got)[0] == 746
+    assert sorted(numbers(got)[1:]) == [88, 219]
+
+
+def test_switches_restore_plain_roadmap_order():
+    ps = [fresh(88, 2, "Easy", nc150=False), fresh(42, 2, "Hard"), fresh(746, 13, "Easy")]
+    tiers = new_problem_tiers(ps, hard_last=False, nc150_first=False)
+    assert [[p.number for p in t] for t in tiers] == [[42, 88, 746]]
+
+
+def test_official_150_list_is_complete_and_in_the_seed():
+    import json
+    from pathlib import Path
+    seed = json.loads((Path(__file__).resolve().parents[2] / "data" / "seed.json").read_text())
+    by_number = {p["number"]: p for p in seed["problems"]}
+    assert len(NEETCODE_150) == 150
+    assert sum(len(v) for v in NEETCODE_150_BY_CHAPTER.values()) == 150, "no duplicates"
+    assert NEETCODE_150 <= set(by_number)
+    assert {n for n, p in by_number.items() if p["in_neetcode150"]} == NEETCODE_150
+    for chapter, nums in NEETCODE_150_BY_CHAPTER.items():
+        assert all(by_number[n]["chapter_num"] == chapter for n in nums), chapter
 
 
 def test_today_new_problems_span_chapters_and_skip_hards(client, db_session):

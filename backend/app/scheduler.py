@@ -2,7 +2,8 @@
 
 Every day you get three things:
   1. Due reviews  — what SRS says is due, ranked by priority(), capped at N
-  2. New problems — roadmap order (chapter, then number), one per chapter, Hards last
+  2. New problems — the rest of the NeetCode 150 in roadmap order, then the 250
+                    additions shuffled; one per chapter a day, Hards last
   3. A template   — one of the 15 algorithm templates, also on an SRS schedule
 
 Key design decision: **overflow defers**. Twenty problems may be due on a day you can only
@@ -17,6 +18,7 @@ and each primary pattern per day, then backfills so no slot goes unused.
 """
 from __future__ import annotations
 
+import hashlib
 from collections import Counter
 from dataclasses import dataclass, field
 from datetime import date, timedelta
@@ -26,6 +28,7 @@ from sqlalchemy.orm import Session, selectinload
 
 from .config import settings
 from .models import Problem, ReviewState
+from .neetcode150 import NEETCODE_150_POSITION
 from .patterns import patterns_for
 from .srs import priority
 
@@ -99,10 +102,62 @@ def pick_diverse(
     return [item for _, item in picked]
 
 
-def new_problem_order(problem, hard_last: bool = True) -> tuple:
-    """Sort key for unstarted problems: roadmap order, optionally with every Hard last."""
-    held_back = hard_last and problem.difficulty == "Hard"
-    return (held_back, problem.chapter_num, problem.number)
+def shuffle_key(number: int) -> str:
+    """A fixed pseudo-random position for a problem.
+
+    Not random.shuffle(): a reshuffle on every request would swap out the other two new
+    problems each time you finish one and reload. Not hash() either, which Python salts
+    per process. A digest of the number gives one stable permutation.
+    """
+    return hashlib.sha256(f"nc250:{number}".encode()).hexdigest()
+
+
+def roadmap_key(problem) -> tuple:
+    """Chapter, then NeetCode's order within the chapter; additions follow the 150 in
+    their chapter, by number."""
+    pos = NEETCODE_150_POSITION.get(problem.number)
+    return (problem.chapter_num, 0 if pos else 1, pos[1] if pos else problem.number)
+
+
+def new_problem_tiers(problems, hard_last: bool = True, nc150_first: bool = True) -> list[list]:
+    """Unstarted problems grouped into tiers, drawn from strictly in this order:
+
+        1. NeetCode 150, Easy/Medium   roadmap order
+        2. 250 additions, Easy/Medium  shuffled
+        3. NeetCode 150, Hard          roadmap order
+        4. 250 additions, Hard         shuffled
+
+    hard_last=False merges the Hard tiers into the ones above; nc150_first=False merges
+    the 150 and the additions back into plain roadmap order. Empty tiers are dropped.
+    """
+    buckets: dict[tuple[bool, bool], list] = {}
+    for p in problems:
+        held_back = hard_last and p.difficulty == "Hard"
+        extra = nc150_first and not p.in_neetcode150
+        buckets.setdefault((held_back, extra), []).append(p)
+
+    tiers = []
+    for (held_back, extra) in sorted(buckets):      # False sorts before True
+        group = buckets[(held_back, extra)]
+        if extra:
+            group.sort(key=lambda p: shuffle_key(p.number))
+        else:
+            group.sort(key=roadmap_key)
+        tiers.append(group)
+    return tiers
+
+
+def pick_tiered(
+    tiers: list[list[QueueItem]], cap: int, per_chapter: int, per_pattern: int,
+) -> list[QueueItem]:
+    """Fill `cap` slots tier by tier. A tier is exhausted — backfill included — before the
+    next one is touched, so spreading across chapters never pulls in a lower tier early."""
+    picked: list[QueueItem] = []
+    for tier in tiers:
+        if len(picked) >= cap:
+            break
+        picked += pick_diverse(tier, cap - len(picked), per_chapter, per_pattern)
+    return picked
 
 
 def _load(db: Session, kind: str) -> list[Problem]:
@@ -148,11 +203,11 @@ def build_today(
     )
     queue.deferred = len(due_items) - len(queue.reviews)
 
-    # --- 2. New problems: roadmap order, one per chapter, Hards held back ---
+    # --- 2. New problems: the rest of the 150 first, then the 250 additions ---
     fresh = [p for p in problems if p.state is None or p.state.due is None]
-    fresh.sort(key=lambda p: new_problem_order(p, settings.new_hard_last))
-    queue.new_problems = pick_diverse(
-        [QueueItem(problem=p, reason="new") for p in fresh], new_cap,
+    tiers = new_problem_tiers(fresh, settings.new_hard_last, settings.new_neetcode150_first)
+    queue.new_problems = pick_tiered(
+        [[QueueItem(problem=p, reason="new") for p in tier] for tier in tiers], new_cap,
         settings.daily_new_per_chapter_cap, settings.daily_per_pattern_cap,
     )
 

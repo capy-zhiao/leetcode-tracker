@@ -643,7 +643,7 @@
       "chapter_num": 4,
       "chapter": "Stack",
       "url": "https://neetcode.io/problems/generate-parentheses?list=neetcode250",
-      "in_neetcode150": false,
+      "in_neetcode150": true,
       "solved": false,
       "notes": "",
       "code": ""
@@ -2731,7 +2731,7 @@
       "chapter_num": 17,
       "chapter": "Bit Manipulation",
       "url": "https://neetcode.io/problems/single-number?list=neetcode250",
-      "in_neetcode150": false,
+      "in_neetcode150": true,
       "solved": false,
       "notes": "",
       "code": ""
@@ -2743,7 +2743,7 @@
       "chapter_num": 17,
       "chapter": "Bit Manipulation",
       "url": "https://neetcode.io/problems/number-of-one-bits?list=neetcode250",
-      "in_neetcode150": false,
+      "in_neetcode150": true,
       "solved": false,
       "notes": "",
       "code": ""
@@ -2755,7 +2755,7 @@
       "chapter_num": 17,
       "chapter": "Bit Manipulation",
       "url": "https://neetcode.io/problems/counting-bits?list=neetcode250",
-      "in_neetcode150": false,
+      "in_neetcode150": true,
       "solved": false,
       "notes": "",
       "code": ""
@@ -2779,7 +2779,7 @@
       "chapter_num": 17,
       "chapter": "Bit Manipulation",
       "url": "https://neetcode.io/problems/reverse-bits?list=neetcode250",
-      "in_neetcode150": false,
+      "in_neetcode150": true,
       "solved": false,
       "notes": "",
       "code": ""
@@ -2791,7 +2791,7 @@
       "chapter_num": 17,
       "chapter": "Bit Manipulation",
       "url": "https://neetcode.io/problems/missing-number?list=neetcode250",
-      "in_neetcode150": false,
+      "in_neetcode150": true,
       "solved": false,
       "notes": "",
       "code": ""
@@ -2803,7 +2803,7 @@
       "chapter_num": 17,
       "chapter": "Bit Manipulation",
       "url": "https://neetcode.io/problems/sum-of-two-integers?list=neetcode250",
-      "in_neetcode150": false,
+      "in_neetcode150": true,
       "solved": false,
       "notes": "",
       "code": ""
@@ -2815,7 +2815,7 @@
       "chapter_num": 17,
       "chapter": "Bit Manipulation",
       "url": "https://neetcode.io/problems/reverse-integer?list=neetcode250",
-      "in_neetcode150": false,
+      "in_neetcode150": true,
       "solved": false,
       "notes": "",
       "code": ""
@@ -2899,7 +2899,7 @@
       "chapter_num": 18,
       "chapter": "Math & Geometry",
       "url": "https://neetcode.io/problems/rotate-matrix?list=neetcode250",
-      "in_neetcode150": false,
+      "in_neetcode150": true,
       "solved": false,
       "notes": "",
       "code": ""
@@ -2911,7 +2911,7 @@
       "chapter_num": 18,
       "chapter": "Math & Geometry",
       "url": "https://neetcode.io/problems/spiral-matrix?list=neetcode250",
-      "in_neetcode150": false,
+      "in_neetcode150": true,
       "solved": false,
       "notes": "",
       "code": ""
@@ -2923,7 +2923,7 @@
       "chapter_num": 18,
       "chapter": "Math & Geometry",
       "url": "https://neetcode.io/problems/set-zeroes-in-matrix?list=neetcode250",
-      "in_neetcode150": false,
+      "in_neetcode150": true,
       "solved": false,
       "notes": "",
       "code": ""
@@ -2935,7 +2935,7 @@
       "chapter_num": 18,
       "chapter": "Math & Geometry",
       "url": "https://neetcode.io/problems/non-cyclical-number?list=neetcode250",
-      "in_neetcode150": false,
+      "in_neetcode150": true,
       "solved": false,
       "notes": "",
       "code": ""
@@ -2947,7 +2947,7 @@
       "chapter_num": 18,
       "chapter": "Math & Geometry",
       "url": "https://neetcode.io/problems/plus-one?list=neetcode250",
-      "in_neetcode150": false,
+      "in_neetcode150": true,
       "solved": false,
       "notes": "",
       "code": ""
@@ -2971,7 +2971,7 @@
       "chapter_num": 18,
       "chapter": "Math & Geometry",
       "url": "https://neetcode.io/problems/pow-x-n?list=neetcode250",
-      "in_neetcode150": false,
+      "in_neetcode150": true,
       "solved": false,
       "notes": "",
       "code": ""
@@ -2983,7 +2983,7 @@
       "chapter_num": 18,
       "chapter": "Math & Geometry",
       "url": "https://neetcode.io/problems/multiply-strings?list=neetcode250",
-      "in_neetcode150": false,
+      "in_neetcode150": true,
       "solved": false,
       "notes": "",
       "code": ""
@@ -2995,7 +2995,7 @@
       "chapter_num": 18,
       "chapter": "Math & Geometry",
       "url": "https://neetcode.io/problems/count-squares?list=neetcode250",
-      "in_neetcode150": false,
+      "in_neetcode150": true,
       "solved": false,
       "notes": "",
       "code": ""
