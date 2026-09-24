@@ -28,16 +28,25 @@ class Settings(BaseSettings):
     # the day — it only changes which problems fill it.
     daily_per_chapter_cap: int = 2
     daily_per_pattern_cap: int = 2
-    # New problems: one per chapter a day, so a fresh day samples several topics instead of
-    # three in a row from the same chapter. Backfilled like reviews.
-    daily_new_per_chapter_cap: int = 1
+    # New problems follow the tier order strictly by default (0 = no limit). Raise these to
+    # spread a day's new problems across chapters / patterns instead.
+    daily_new_per_chapter_cap: int = 0
+    daily_new_per_pattern_cap: int = 0
     # Hold every Hard back until the Easy/Medium problems are done — the same rule as the
     # manual study plan. Set to false when you are ready to start on Hards.
     new_hard_last: bool = True
     # Finish the NeetCode 150 before any of the 250 additions, which then come in a fixed
     # shuffled order rather than chapter by chapter.
     new_neetcode150_first: bool = True
+    # Chapters whose NeetCode 150 problems wait with the 250 additions instead (CSV).
+    # Default: Bit Manipulation (17) and Math & Geometry (18), which were left out of the
+    # original study plan. They stay flagged as NeetCode 150 everywhere else.
+    new_later_chapters: str = "17,18"
     cors_origins: str = "http://localhost:5173,http://127.0.0.1:5173"
+
+    @property
+    def new_later_chapter_set(self) -> frozenset[int]:
+        return frozenset(int(c) for c in self.new_later_chapters.split(",") if c.strip())
 
     @property
     def cors_list(self) -> list[str]:

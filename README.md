@@ -3,7 +3,7 @@
 [![CI](https://github.com/capy-zhiao/leetcode-tracker/actions/workflows/ci.yml/badge.svg)](https://github.com/capy-zhiao/leetcode-tracker/actions/workflows/ci.yml)
 ![Python](https://img.shields.io/badge/python-3.12%20%7C%203.13-blue)
 ![React](https://img.shields.io/badge/react-18-61dafb)
-![Tests](https://img.shields.io/badge/tests-128-brightgreen)
+![Tests](https://img.shields.io/badge/tests-132-brightgreen)
 
 A spaced-repetition tracker for the **NeetCode 250**: it decides what to practise each day,
 schedules reviews on a forgetting curve, tracks your personal bug patterns, and runs timed
@@ -102,13 +102,14 @@ empty slots in priority order, so the limits change *which* problems you get, ne
 many. Both limits are needed: capping patterns alone still gave four graph problems,
 because Course Schedule is topological sort rather than grid DFS.
 
-**4. New problems finish the NeetCode 150 first, one chapter each.** New problems are drawn
-from four tiers, each exhausted before the next: the 150's Easy/Medium in NeetCode's own
-teaching order, then the 250 additions' Easy/Medium in a fixed shuffled order, then the
-Hards of each (`NEW_HARD_LAST=false` and `NEW_NEETCODE150_FIRST=false` collapse the tiers).
-Within a tier, three new problems a day come from three different chapters. The shuffle
-is a hash of the problem number rather than a reshuffle per request, so finishing one
-problem never swaps out the other two.
+**4. New problems finish the NeetCode 150 first, in NeetCode's order.** New problems are
+drawn from four tiers, each exhausted before the next: the 150's Easy/Medium in NeetCode's
+own teaching order, then the 250 additions' Easy/Medium in a fixed shuffled order, then
+the Hards of each. Chapters listed in `NEW_LATER_CHAPTERS` (default Bit Manipulation and
+Math & Geometry) wait with the additions while staying flagged as NeetCode 150. Unlike
+reviews, new problems are not spread across chapters by default — the order *is* the
+plan. The shuffle is a hash of the problem number rather than a reshuffle per request, so
+finishing one problem never swaps out the others.
 
 ## 🚀 Running it
 

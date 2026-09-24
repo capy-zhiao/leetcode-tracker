@@ -198,7 +198,8 @@ def test_official_150_list_is_complete_and_in_the_seed():
         assert all(by_number[n]["chapter_num"] == chapter for n in nums), chapter
 
 
-def test_today_new_problems_span_chapters_and_skip_hards(client, db_session):
+def test_today_new_problems_follow_order_and_skip_hards(client, db_session):
+    """No chapter spreading for new problems by default: strict tier order."""
     for number, chapter, diff in [
         (41, 1, "Hard"), (75, 1, "Medium"), (122, 1, "Medium"),
         (18, 2, "Medium"), (26, 2, "Easy"),
@@ -210,7 +211,36 @@ def test_today_new_problems_span_chapters_and_skip_hards(client, db_session):
     db_session.commit()
 
     q = client.get("/review/today", params={"new_cap": 3}).json()
-    assert [i["problem"]["number"] for i in q["new_problems"]] == [75, 18, 209]
+    assert [i["problem"]["number"] for i in q["new_problems"]] == [75, 122, 18]
+
+
+def test_later_chapters_wait_with_the_additions():
+    """Bit & Math are NeetCode 150 but were left out of the study plan."""
+    ps = [fresh(136, 17, "Easy"), fresh(48, 18), fresh(746, 13, "Easy"),
+          fresh(88, 2, "Easy", nc150=False)]
+    tiers = new_problem_tiers(ps, later_chapters=frozenset({17, 18}))
+    assert [p.number for p in tiers[0]] == [746]
+    assert sorted(p.number for p in tiers[1]) == [48, 88, 136]
+
+
+def test_later_chapters_empty_keeps_them_in_the_150():
+    ps = [fresh(136, 17, "Easy"), fresh(746, 13, "Easy")]
+    tiers = new_problem_tiers(ps, later_chapters=frozenset())
+    assert [p.number for p in tiers[0]] == [746, 136]
+
+
+def test_later_chapters_setting_parses_csv():
+    from app.config import Settings
+    assert Settings(new_later_chapters="17, 18").new_later_chapter_set == {17, 18}
+    assert Settings(new_later_chapters="").new_later_chapter_set == frozenset()
+
+
+def test_new_problems_keep_strict_order_without_caps():
+    """A pattern cap would skip 213 (third dp-1d) and pull 5 forward."""
+    ps = [fresh(n, 13, pattern=pat) for n, pat in
+          ((746, "dp-1d"), (198, "dp-1d"), (213, "dp-1d"), (5, "dp-string"))]
+    got = pick_tiered(as_items(new_problem_tiers(ps)), cap=3, per_chapter=0, per_pattern=0)
+    assert numbers(got) == [746, 198, 213]
 
 
 def test_new_backfills_when_only_one_chapter_is_left(client, db_session):

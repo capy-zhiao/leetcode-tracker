@@ -3,7 +3,7 @@
 Every day you get three things:
   1. Due reviews  — what SRS says is due, ranked by priority(), capped at N
   2. New problems — the rest of the NeetCode 150 in roadmap order, then the 250
-                    additions shuffled; one per chapter a day, Hards last
+                    additions shuffled (Bit & Math with them), Hards last
   3. A template   — one of the 15 algorithm templates, also on an SRS schedule
 
 Key design decision: **overflow defers**. Twenty problems may be due on a day you can only
@@ -119,7 +119,12 @@ def roadmap_key(problem) -> tuple:
     return (problem.chapter_num, 0 if pos else 1, pos[1] if pos else problem.number)
 
 
-def new_problem_tiers(problems, hard_last: bool = True, nc150_first: bool = True) -> list[list]:
+def new_problem_tiers(
+    problems,
+    hard_last: bool = True,
+    nc150_first: bool = True,
+    later_chapters: frozenset[int] = frozenset(),
+) -> list[list]:
     """Unstarted problems grouped into tiers, drawn from strictly in this order:
 
         1. NeetCode 150, Easy/Medium   roadmap order
@@ -128,12 +133,14 @@ def new_problem_tiers(problems, hard_last: bool = True, nc150_first: bool = True
         4. 250 additions, Hard         shuffled
 
     hard_last=False merges the Hard tiers into the ones above; nc150_first=False merges
-    the 150 and the additions back into plain roadmap order. Empty tiers are dropped.
+    the 150 and the additions back into plain roadmap order. 150 problems in
+    `later_chapters` are treated as additions (a study-plan choice, not a data change —
+    they remain NeetCode 150). Empty tiers are dropped.
     """
     buckets: dict[tuple[bool, bool], list] = {}
     for p in problems:
         held_back = hard_last and p.difficulty == "Hard"
-        extra = nc150_first and not p.in_neetcode150
+        extra = nc150_first and (not p.in_neetcode150 or p.chapter_num in later_chapters)
         buckets.setdefault((held_back, extra), []).append(p)
 
     tiers = []
@@ -205,10 +212,13 @@ def build_today(
 
     # --- 2. New problems: the rest of the 150 first, then the 250 additions ---
     fresh = [p for p in problems if p.state is None or p.state.due is None]
-    tiers = new_problem_tiers(fresh, settings.new_hard_last, settings.new_neetcode150_first)
+    tiers = new_problem_tiers(
+        fresh, settings.new_hard_last, settings.new_neetcode150_first,
+        settings.new_later_chapter_set,
+    )
     queue.new_problems = pick_tiered(
         [[QueueItem(problem=p, reason="new") for p in tier] for tier in tiers], new_cap,
-        settings.daily_new_per_chapter_cap, settings.daily_per_pattern_cap,
+        settings.daily_new_per_chapter_cap, settings.daily_new_per_pattern_cap,
     )
 
     # --- 3. One template: the due one, otherwise whichever has gone longest untouched ---
