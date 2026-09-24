@@ -337,16 +337,23 @@ function AiComplexity({
     )
   }
   if (!verdict) return null
+  // is_optimal only speaks to time. Space is compared separately, because "can you do it
+  // in O(1) space?" is the classic follow-up to an otherwise optimal DP array solution.
+  const norm = (x: string) => x.replace(/\s/g, '').toLowerCase()
+  const spaceImprovable = norm(verdict.actual_space) !== norm(verdict.optimal_space)
   return (
     <div className="text-sm bg-indigo-50 border border-indigo-200 rounded-lg p-3 space-y-1">
       <p className="text-indigo-950">
         🤖 Your code: <b className="font-mono">{verdict.actual_time}</b> time,{' '}
         <b className="font-mono">{verdict.actual_space}</b> space
         {verdict.is_optimal
-          ? <span className="text-emerald-700"> · optimal</span>
-          : <span className="text-amber-700"> · not optimal — best is{' '}
-              <span className="font-mono">{verdict.optimal_time}</span> /{' '}
-              <span className="font-mono">{verdict.optimal_space}</span></span>}
+          ? <span className="text-emerald-700"> · optimal time</span>
+          : <span className="text-amber-700"> · time can be{' '}
+              <span className="font-mono">{verdict.optimal_time}</span></span>}
+        {spaceImprovable && (
+          <span className="text-amber-700"> · space can be{' '}
+            <span className="font-mono">{verdict.optimal_space}</span></span>
+        )}
       </p>
       <p className="text-indigo-900/80">{verdict.explanation}</p>
     </div>
