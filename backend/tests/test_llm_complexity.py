@@ -249,3 +249,55 @@ def test_stored_verdict_records_the_model_that_judged_it(client, sample_problems
     body = client.post(f"/review/attempts/{aid}/complexity-ai").json()
     assert body["complexity_ai"]["model"] == "stub-complexity"
     assert p.tasks == ["complexity"]
+
+
+# ---------------------------------------------------------------- optimised rewrite
+
+from app.llm import optimized_patch
+
+DP_ARRAY = """class Solution:
+    def rob(self, nums):
+        dp = [0] * len(nums)
+        dp[0] = nums[0]
+        for i in range(1, len(nums)):
+            dp[i] = max(nums[i] + (dp[i - 2] if i > 1 else 0), dp[i - 1])
+        return dp[-1]"""
+ROLLING = """class Solution:
+    def rob(self, nums):
+        prev2, prev1 = 0, 0
+        for i in range(len(nums)):
+            prev2, prev1 = prev1, max(nums[i] + prev2, prev1)
+        return prev1"""
+
+
+def test_rewrite_is_diffed_against_the_submitted_code():
+    code, diff = optimized_patch(DP_ARRAY, ROLLING)
+    assert code == ROLLING
+    assert diff[0] == "--- your code" and diff[1] == "+++ optimized"
+    assert any(line.startswith("-        dp = [0]") for line in diff)
+    assert any(line.startswith("+        prev2, prev1 = 0, 0") for line in diff)
+
+
+def test_markdown_fence_around_the_rewrite_is_stripped():
+    code, _ = optimized_patch(DP_ARRAY, f"```python\n{ROLLING}\n```")
+    assert code == ROLLING
+
+
+@pytest.mark.parametrize("rewrite", ["", "   ", "def rob(:\n    pass", DP_ARRAY])
+def test_nothing_shown_for_empty_broken_or_unchanged_rewrites(rewrite):
+    assert optimized_patch(DP_ARRAY, rewrite) == ("", [])
+
+
+def test_endpoint_stores_the_validated_rewrite_and_diff(client, sample_problems, stub):
+    stub(verdict(actual_space="O(n)", optimal_space="O(1)", optimized_code=ROLLING))
+    aid = submit(client, 200, code=DP_ARRAY, t="O(n)", s="O(n)")
+    ai = client.post(f"/review/attempts/{aid}/complexity-ai").json()["complexity_ai"]
+    assert ai["optimized_code"] == ROLLING
+    assert ai["optimized_diff"][0] == "--- your code"
+
+
+def test_endpoint_drops_a_rewrite_that_does_not_parse(client, sample_problems, stub):
+    stub(verdict(optimized_code="def rob(:"))
+    aid = submit(client, 200, code=DP_ARRAY)
+    ai = client.post(f"/review/attempts/{aid}/complexity-ai").json()["complexity_ai"]
+    assert ai["optimized_code"] == "" and ai["optimized_diff"] == []

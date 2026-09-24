@@ -93,7 +93,9 @@ export interface ComplexityVerdict {
   optimal_space: string
   is_optimal: boolean
   explanation: string
-  model?: string          // which model judged it
+  optimized_code?: string   // validated rewrite of the submitted code; "" when already optimal
+  optimized_diff?: string[] // unified diff: submitted code -> optimized
+  model?: string            // which model judged it
 }
 
 export interface ComplexityCheck {
@@ -128,7 +130,6 @@ export interface Stats {
 
 export interface FollowUp { id: number; question: string; hint: string }
 export interface MockStart { problem: ProblemDetail; minutes: number; followups_ready: boolean }
-export interface CodeReview { summary: string; issues: string[]; suggested_mistakes: string[] }
 
 // --- template blind-write drills ---
 

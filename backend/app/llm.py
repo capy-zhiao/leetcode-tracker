@@ -1,4 +1,4 @@
-"""Pluggable LLM layer: generates interview follow-up questions and reviews code.
+"""Pluggable LLM layer: interview follow-ups, answer grading and complexity checks.
 
 Two providers are supported and selected with LLM_PROVIDER:
 
@@ -12,6 +12,8 @@ functions return empty results and the rest of the app keeps working — no hard
 """
 from __future__ import annotations
 
+import ast
+import difflib
 import json
 import logging
 import re
@@ -20,7 +22,6 @@ from typing import TypeVar
 from pydantic import BaseModel, Field, ValidationError
 
 from .config import settings
-from .constants import MISTAKE_TAGS
 
 log = logging.getLogger(__name__)
 T = TypeVar("T", bound=BaseModel)
@@ -34,14 +35,6 @@ class FollowUpItem(BaseModel):
 
 class FollowUpBundle(BaseModel):
     followups: list[FollowUpItem]
-
-
-class CodeReview(BaseModel):
-    summary: str = Field(description="One or two sentences: is it correct, what is the complexity")
-    issues: list[str] = Field(description="Concrete problems, one sentence each; empty list if none")
-    suggested_mistakes: list[str] = Field(
-        description="IDs from the provided mistake-tag list that this code actually exhibits; empty if none"
-    )
 
 
 class AnswerGrade(BaseModel):
@@ -68,6 +61,14 @@ class ComplexityVerdict(BaseModel):
     explanation: str = Field(
         description="Two or three sentences: define the variables, say where the dominant "
                     "cost comes from, and if the candidate was wrong, what they missed"
+    )
+    optimized_code: str = Field(
+        default="",
+        description="Only if this code is not optimal in time or in space: the candidate's "
+                    "code with the smallest change that reaches the optimal complexity — same "
+                    "class, method signature, variable names and style; change only what the "
+                    "optimisation needs. Complete code as plain text, no markdown. Empty "
+                    "string when the code is already optimal in both time and space.",
     )
 
 
@@ -345,44 +346,6 @@ Give {n} follow-up questions you would ask after they finish coding. Requirement
     return result.followups if result else []
 
 
-def review_code(
-    title: str, number: int, difficulty: str, code: str, language: str = "Python"
-) -> CodeReview | None:
-    """Review a submitted solution and infer which mistake tags it exhibits,
-    so the user does not have to tick them by hand."""
-    provider = get_provider()
-    if provider is None or not code.strip():
-        return None
-
-    tag_list = "\n".join(f"  - {t['id']}: {t['label']} — {t['hint']}" for t in MISTAKE_TAGS)
-    prompt = f"""Review this LeetCode solution.
-
-Problem: {number}. {title} ({difficulty})
-
-```{language.lower()}
-{code}
-```
-
-Please:
-1. Give a one or two sentence verdict (is it correct, what is the complexity)
-2. List concrete issues, one sentence each. If there genuinely are none, return an empty
-   list — **do not invent problems to fill the quota**
-3. From the mistake tags below, pick the ones this code **actually** exhibits
-   (return ids only, empty list if none apply):
-
-{tag_list}
-
-Be direct — skip the pleasantries."""
-
-    review = provider.complete(prompt, CodeReview)
-    if review is None:
-        return None
-
-    valid = {t["id"] for t in MISTAKE_TAGS}
-    review.suggested_mistakes = [m for m in review.suggested_mistakes if m in valid]
-    return review
-
-
 def analyze_complexity(
     title: str,
     number: int,
@@ -428,9 +391,43 @@ Rules:
   a stated bound that differs only by a constant.
 - Do not accept a looser or tighter bound: O(n) is wrong for O(n log n), and O(n^2) is
   wrong for O(n) unless the code really is quadratic.
-- Name your variables in the explanation (n = ..., V = ..., E = ...)."""
+- Name your variables in the explanation (n = ..., V = ..., E = ...).
+- optimized_code: if the time OR the space is not optimal, rewrite THEIR code minimally to
+  reach the optimum, so a diff against their code shows only the optimisation. Copy every
+  line that does not need to change exactly as written — same formatting, one-line ifs,
+  blank lines, comments, spacing. Do not add imports (the judge provides them), type
+  hints, docstrings or explanatory comments. Leave it empty if both are already optimal."""
 
     return provider.complete(prompt, ComplexityVerdict, task="complexity")
+
+
+def optimized_patch(user_code: str, optimized: str) -> tuple[str, list[str]]:
+    """Validate the model's optimised rewrite and diff it against the candidate's code.
+
+    Returns ("", []) when there is nothing worth showing: no rewrite, a rewrite identical
+    to the original, or one that is not valid Python — a broken "improvement" is worse
+    than none, and the model's code is otherwise shown unchecked.
+    """
+    code = optimized.strip()
+    fenced = re.match(r"^```(?:python)?\s*\n(.*?)\n?```$", code, re.DOTALL)
+    if fenced:
+        code = fenced.group(1).strip()
+    if not code:
+        return "", []
+    try:
+        ast.parse(code)
+    except SyntaxError as e:
+        log.warning("optimized_code is not valid Python (%s) — not shown", e.msg)
+        return "", []
+
+    before = [line.rstrip() for line in user_code.strip().splitlines()]
+    after = [line.rstrip() for line in code.splitlines()]
+    if before == after:
+        return "", []
+    diff = list(difflib.unified_diff(
+        before, after, fromfile="your code", tofile="optimized", lineterm="", n=2,
+    ))
+    return code, diff
 
 
 def interview_followups(

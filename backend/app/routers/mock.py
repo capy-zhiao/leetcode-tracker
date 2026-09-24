@@ -1,4 +1,4 @@
-"""Mock interview: random problem, timer, interviewer follow-ups, AI code review.
+"""Mock interview: random problem, timer, interviewer follow-ups.
 
 Two kinds of follow-up:
   /followups   about the problem in general; generated once and cached per problem, with a
@@ -18,7 +18,7 @@ from ..database import get_db
 from ..deps import get_problem
 from ..models import FollowUp, InterviewQA, Problem
 from ..schemas import (
-    AnswerGradeOut, AnswerIn, CodeReviewOut, FollowUpOut, InterviewQuestionOut,
+    AnswerGradeOut, AnswerIn, FollowUpOut, InterviewQuestionOut,
     InterviewStartIn, MockStartOut, ProblemDetail,
 )
 
@@ -93,28 +93,6 @@ def get_followups(
     for r in rows:
         db.refresh(r)
     return rows
-
-
-@router.post("/{number}/review-code", response_model=CodeReviewOut)
-def ai_code_review(
-    payload: dict,
-    problem: Problem = Depends(get_problem),
-):
-    """Send the solution to the configured LLM for review, including which mistake tags apply."""
-    code = (payload or {}).get("code", "")
-    if not code.strip():
-        raise HTTPException(400, "Code cannot be empty")
-    if not llm.is_enabled():
-        raise HTTPException(503, "AI review unavailable — set LLM_PROVIDER and the matching API key")
-
-    result = llm.review_code(problem.title, problem.number, problem.difficulty, code)
-    if result is None:
-        raise HTTPException(502, "The LLM call failed, please try again")
-    return CodeReviewOut(
-        summary=result.summary,
-        issues=result.issues,
-        suggested_mistakes=result.suggested_mistakes,
-    )
 
 
 @router.post("/{number}/interview", response_model=list[InterviewQuestionOut])

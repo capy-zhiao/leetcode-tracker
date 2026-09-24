@@ -3,7 +3,7 @@
 [![CI](https://github.com/capy-zhiao/leetcode-tracker/actions/workflows/ci.yml/badge.svg)](https://github.com/capy-zhiao/leetcode-tracker/actions/workflows/ci.yml)
 ![Python](https://img.shields.io/badge/python-3.12%20%7C%203.13-blue)
 ![React](https://img.shields.io/badge/react-18-61dafb)
-![Tests](https://img.shields.io/badge/tests-170-brightgreen)
+![Tests](https://img.shields.io/badge/tests-177-brightgreen)
 
 A spaced-repetition tracker for the **NeetCode 250**: it decides what to practise each day,
 schedules reviews on a forgetting curve, tracks your personal bug patterns, and runs timed
@@ -27,7 +27,6 @@ mock interviews with LLM-generated follow-up questions.
 | **Complexity self-check** | Time and space are **required** before an attempt can be submitted, and graded against a reference for 217 of the 250 problems |
 | **Proficiency by pattern** | 40 techniques cutting across the roadmap, ranked weakest first, each linked to the drill that fixes it |
 | **Fully keyboard driven** | Space, 1-4, ⌘↵, J/K — one solve without touching the mouse |
-| **AI code review** | An LLM reviews your solution and infers which mistake tags it exhibits |
 
 ## 🏗 Architecture
 
@@ -38,7 +37,7 @@ FastAPI + SQLAlchemy 2.0 + Pydantic v2    backend (auto-generated OpenAPI docs)
           |
 SQLite (dev) / PostgreSQL (prod)
           |
-Claude or DeepSeek                        follow-up generation + code review (optional)
+Claude or DeepSeek                        interview follow-ups, grading, complexity check (optional)
 ```
 
 **Design decisions worth calling out:**
@@ -145,7 +144,7 @@ Tests: `cd backend && ./.venv/bin/python -m pytest -q`
 
 ## 🤖 Enabling the AI features
 
-Follow-up generation, code review and the AI complexity check need a provider. Set
+Interview follow-ups, answer grading and the AI complexity check need a provider. Set
 `LLM_PROVIDER` in `backend/.env`:
 
 ```bash
@@ -173,7 +172,11 @@ verdicts at about a twentieth of the cost. Each stored verdict records which mod
 solution, so an honest O(n²) analysis of a brute-force answer is marked wrong. With a
 provider configured, every submission is also sent to the model, which judges your answer
 against *the code you actually wrote* and says separately whether that code is optimal;
-its verdict replaces the table's. It runs after the attempt is saved, since a
+its verdict replaces the table's. When your code is not optimal in time or space, the
+same call returns **your code minimally rewritten to reach the optimum**, shown as a diff so
+only the optimisation stands out (e.g. a House Robber dp array becoming a two-slot rolling
+array: three changed lines). The rewrite must parse as Python or it is not shown; past
+verdicts, rewrite included, open from the History list. It runs after the attempt is saved, since a
 thinking-mode reply can take up to a minute. At DeepSeek v4-pro peak rates that is
 roughly $0.01 a problem with thinking on and $0.0015 with it off.
 
@@ -226,7 +229,6 @@ Press <kbd>?</kbd> anywhere for this list.
 | <kbd>1</kbd>–<kbd>4</kbd> | Pick a grade, again → easy | Solve |
 | <kbd>⌘</kbd><kbd>↵</kbd> | Submit — works from inside the editor | Solve, Drill |
 | <kbd>C</kbd> | Check the blind-write | Drill |
-| <kbd>R</kbd> | Run the AI code review | Solve |
 | <kbd>J</kbd> / <kbd>K</kbd> | Move through the queue | Today |
 | <kbd>G</kbd> | Jump to Today | Anywhere |
 

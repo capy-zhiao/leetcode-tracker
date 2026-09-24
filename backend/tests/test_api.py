@@ -120,11 +120,6 @@ def test_followups_fall_back_without_a_provider(client, sample_problems):
     assert all(i["question"] for i in items)
 
 
-def test_code_review_requires_a_provider(client, sample_problems):
-    r = client.post("/mock/1/review-code", json={"code": "print(1)"})
-    assert r.status_code == 503
-
-
 def test_mock_start(client, sample_problems):
     r = client.post("/mock/start", params={"difficulty": "Medium"})
     assert r.status_code == 200

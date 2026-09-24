@@ -159,12 +159,6 @@ class MockStartOut(BaseModel):
     followups_ready: bool
 
 
-class CodeReviewOut(BaseModel):
-    summary: str
-    issues: list[str]
-    suggested_mistakes: list[str]
-
-
 # --- template blind-write ---
 
 class BlindWriteIn(BaseModel):

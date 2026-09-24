@@ -14,7 +14,7 @@ import Timer, { formatTime, useTimer } from '../components/Timer'
 import { api } from '../lib/api'
 import { useHotkeys } from '../lib/useHotkeys'
 import type {
-  Attempt, CodeReview, ComplexityCheck, ComplexityVerdict, Grade, ProblemDetail,
+  Attempt, ComplexityCheck, ComplexityVerdict, Grade, ProblemDetail,
 } from '../lib/types'
 
 const GRADE_ORDER: Grade[] = ['again', 'hard', 'good', 'easy']
@@ -48,7 +48,6 @@ export default function Solve() {
   const [aiState, setAiState] = useState<'idle' | 'running' | 'failed'>('idle')
   const [aiError, setAiError] = useState('')
   const [attemptId, setAttemptId] = useState<number | null>(null)
-  const [aiReview, setAiReview] = useState<CodeReview | null>(null)
   const [busy, setBusy] = useState(false)
 
   useEffect(() => {
@@ -122,23 +121,12 @@ export default function Solve() {
     }
   }
 
-  const runAiReview = async () => {
-    if (!code.trim() || busy) return
-    setBusy(true)
-    try {
-      const r = await api.reviewCode(num, code)
-      setAiReview(r)
-      setMistakes([...new Set([...mistakes, ...r.suggested_mistakes])])
-    } catch (e) { alert((e as Error).message) } finally { setBusy(false) }
-  }
-
   useHotkeys({
     space: () => (timer.running ? stopAndSuggest() : timer.start()),
     '1': () => setGrade(GRADE_ORDER[0]),
     '2': () => setGrade(GRADE_ORDER[1]),
     '3': () => setGrade(GRADE_ORDER[2]),
     '4': () => setGrade(GRADE_ORDER[3]),
-    r: () => runAiReview(),
     'mod+enter': () => submit(),
   })
 
@@ -188,12 +176,7 @@ export default function Solve() {
 
       {/* code */}
       <div className="card">
-        <div className="flex items-center mb-2">
-          <h2 className="font-medium">Solution</h2>
-          <button className="btn ml-auto text-xs" onClick={runAiReview} disabled={busy || !code.trim()}>
-            🤖 AI Review <kbd className="ml-1 text-[10px] text-slate-400">R</kbd>
-          </button>
-        </div>
+        <h2 className="font-medium mb-2">Solution</h2>
         <CodeEditor
           value={code}
           onChange={setCode}
@@ -201,16 +184,6 @@ export default function Solve() {
           height={340}
           placeholder="Write your solution here…"
         />
-        {aiReview && (
-          <div className="mt-3 rounded-lg bg-indigo-50 border border-indigo-200 p-3 text-sm">
-            <p className="font-medium text-indigo-900">{aiReview.summary}</p>
-            {aiReview.issues.length > 0 && (
-              <ul className="mt-2 list-disc list-inside text-indigo-800 space-y-0.5">
-                {aiReview.issues.map((i, k) => <li key={k}>{i}</li>)}
-              </ul>
-            )}
-          </div>
-        )}
         {prev?.code && prev.code !== code && (
           <details className="mt-3">
             <summary className="text-sm text-slate-500 cursor-pointer">
@@ -287,24 +260,45 @@ export default function Solve() {
         <div className="card">
           <h2 className="font-medium mb-2">History</h2>
           <div className="space-y-1 text-sm">
-            {history.map((a) => (
-              <div key={a.id} className="flex items-center gap-3 text-slate-600">
-                <span className="text-xs text-slate-400 w-24">
-                  {new Date(a.created_at).toLocaleDateString()}
-                </span>
-                <span className="w-12">{a.grade}</span>
-                <span className="w-16 font-mono text-xs">{formatTime(a.seconds)}</span>
-                {a.complexity_ok !== null && (
-                  <span className="text-xs"
-                        title={a.complexity_ai ? 'complexity, judged by AI against this code'
-                                               : 'complexity, checked against the reference'}>
-                    {a.complexity_ok ? '✅' : '❌'} O{a.complexity_ai && ' 🤖'}
-                  </span>
-                )}
-                <span className="flex-1 truncate text-xs">{a.note}</span>
-              </div>
-            ))}
+            {history.map((a) => <HistoryRow key={a.id} a={a} />)}
           </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+/** One past attempt. Rows judged by the AI expand to show that verdict and its rewrite. */
+function HistoryRow({ a }: { a: Attempt }) {
+  const [open, setOpen] = useState(false)
+  const expandable = Boolean(a.complexity_ai)
+  return (
+    <div>
+      <button
+        type="button"
+        onClick={() => expandable && setOpen(!open)}
+        aria-expanded={expandable ? open : undefined}
+        className={`w-full flex items-center gap-3 text-left text-slate-600 rounded px-1 ${
+          expandable ? 'hover:bg-slate-50 cursor-pointer' : 'cursor-default'}`}
+      >
+        <span className="text-xs text-slate-400 w-24">
+          {new Date(a.created_at).toLocaleDateString()}
+        </span>
+        <span className="w-12">{a.grade}</span>
+        <span className="w-16 font-mono text-xs">{formatTime(a.seconds)}</span>
+        {a.complexity_ok !== null && (
+          <span className="text-xs"
+                title={a.complexity_ai ? 'complexity, judged by AI against this code'
+                                       : 'complexity, checked against the reference'}>
+            {a.complexity_ok ? '✅' : '❌'} O{a.complexity_ai && ' 🤖'}
+          </span>
+        )}
+        <span className="flex-1 truncate text-xs">{a.note}</span>
+        {expandable && <span className="text-xs text-slate-300">{open ? '▾' : '▸'}</span>}
+      </button>
+      {open && a.complexity_ai && (
+        <div className="mt-1 mb-2 ml-1">
+          <AiComplexity state="idle" verdict={a.complexity_ai} error="" />
         </div>
       )}
     </div>
@@ -356,7 +350,46 @@ function AiComplexity({
         )}
       </p>
       <p className="text-indigo-900/80">{verdict.explanation}</p>
+      {verdict.optimized_diff && verdict.optimized_diff.length > 0 && verdict.optimized_code && (
+        <OptimizedDiff diff={verdict.optimized_diff} code={verdict.optimized_code} />
+      )}
       {verdict.model && <p className="text-[11px] text-indigo-900/50">judged by {verdict.model}</p>}
+    </div>
+  )
+}
+
+/** The model's rewrite of the submitted code, as a diff so only the optimisation shows. */
+function OptimizedDiff({ diff, code }: { diff: string[]; code: string }) {
+  const [copied, setCopied] = useState(false)
+  const copy = async () => {
+    try {
+      await navigator.clipboard.writeText(code)
+      setCopied(true)
+      setTimeout(() => setCopied(false), 1500)
+    } catch { /* clipboard blocked: the full code is still selectable below */ }
+  }
+  return (
+    <div className="pt-1">
+      <div className="flex items-center gap-2 mb-1">
+        <p className="text-xs font-medium text-indigo-950">Optimized version — changes from your code</p>
+        <button type="button" className="btn text-[11px] py-0.5 px-2 ml-auto" onClick={copy}>
+          {copied ? 'Copied' : 'Copy full code'}
+        </button>
+      </div>
+      {/* Diff lines keep their own colours; the header lines are dropped as noise */}
+      <pre className="text-xs bg-white border border-indigo-100 rounded-lg p-3 overflow-x-auto leading-relaxed">
+        {diff.filter((l) => !l.startsWith('---') && !l.startsWith('+++')).map((line, i) => (
+          <div key={i} className={
+            line.startsWith('+') ? 'bg-emerald-50 text-emerald-800'
+            : line.startsWith('-') ? 'bg-rose-50 text-rose-800'
+            : line.startsWith('@@') ? 'text-slate-400' : 'text-slate-700'
+          }>{line || ' '}</div>
+        ))}
+      </pre>
+      <details className="mt-1">
+        <summary className="text-[11px] text-indigo-900/60 cursor-pointer">full optimized code</summary>
+        <pre className="mt-1 text-xs bg-white border border-indigo-100 rounded-lg p-3 overflow-x-auto">{code}</pre>
+      </details>
     </div>
   )
 }

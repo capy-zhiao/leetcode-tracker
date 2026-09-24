@@ -68,7 +68,6 @@ export const SHORTCUTS: { keys: string; label: string; where: string }[] = [
   { keys: 'Space',  label: 'Start / stop the timer',        where: 'Solve' },
   { keys: '1 – 4',  label: 'Pick a grade (again → easy)',   where: 'Solve' },
   { keys: '⌘ ↵',    label: 'Submit (works inside the editor)', where: 'Solve, Drill' },
-  { keys: 'R',      label: 'Run the AI code review',        where: 'Solve' },
   { keys: 'C',      label: 'Check the blind-write',         where: 'Drill' },
   { keys: 'J / K',  label: 'Move down / up the queue',      where: 'Today' },
   { keys: '↵',      label: 'Open the highlighted problem',  where: 'Today' },

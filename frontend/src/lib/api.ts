@@ -1,7 +1,7 @@
 // Single place every network call goes through, so error handling lives in one spot and
 // swapping the base URL or adding an API key is a one-file change.
 import type {
-  AnswerGrade, Attempt, AttemptIn, AttemptResult, BlindWriteResult, CodeReview,
+  AnswerGrade, Attempt, AttemptIn, AttemptResult, BlindWriteResult,
   ComplexityStats, DailyQueue, FollowUp, InterviewQuestion, MistakeTag, MockStart,
   PatternStat, Problem, ProblemDetail, Stats, TemplateSummary,
 } from './types'
@@ -92,9 +92,5 @@ export const api = {
   answerQuestion: (qaId: number, answer: string) =>
     request<AnswerGrade>(`/mock/qa/${qaId}/answer`, {
       method: 'POST', body: JSON.stringify({ answer }),
-    }),
-  reviewCode: (number: number, code: string) =>
-    request<CodeReview>(`/mock/${number}/review-code`, {
-      method: 'POST', body: JSON.stringify({ code }),
     }),
 }

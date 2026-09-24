@@ -160,7 +160,13 @@ def ai_complexity(attempt_id: int, db: Session = Depends(get_db)):
     if verdict is None:
         raise HTTPException(502, "The AI call failed — the backend log has the reason")
 
-    attempt.complexity_ai = {**verdict.model_dump(), "model": llm.model_name("complexity")}
+    code, diff = llm.optimized_patch(attempt.code, verdict.optimized_code)
+    attempt.complexity_ai = {
+        **verdict.model_dump(),
+        "optimized_code": code,          # validated, or "" when not worth showing
+        "optimized_diff": diff,          # unified diff against the submitted code
+        "model": llm.model_name("complexity"),
+    }
     attempt.complexity_ok = verdict.time_correct and verdict.space_correct
     db.commit()
     db.refresh(attempt)
