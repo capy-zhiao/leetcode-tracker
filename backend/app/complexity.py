@@ -17,7 +17,7 @@ import re
 COMPLEXITY_CHOICES: list[str] = [
     "O(1)", "O(log n)", "O(h)", "O(sqrt n)", "O(n)", "O(n log n)",
     "O(n log k)", "O(n log m)", "O(n sqrt n)", "O(n^2)", "O(n^2 log n)", "O(n^3)",
-    "O(m + n)", "O(m * n)", "O(n * k)", "O(k * E)", "O(V + E)",
+    "O(m + n)", "O(m * n)", "O(n * k)", "O(k * E)", "O(V)", "O(V + E)",
     "O(E log V)", "O(E log E)", "O(log (m + n))", "O(log (m * n))",
     "O(2^n)", "O(n * 2^n)", "O(n * 4^n)", "O(n!)", "O(n * n!)",
 ]
@@ -67,6 +67,11 @@ def matches(answer: str, accepted: list[str]) -> bool:
 # number -> (accepted time answers, accepted space answers)
 # Only problems whose canonical solution has an unambiguous complexity are listed. Anything
 # absent is still recorded, just not graded — better silent than confidently wrong.
+#
+# Graph problems: space is the auxiliary space (visited map, parent array, recursion
+# stack), so O(V) — O(V + E) is also accepted for counting an adjacency list or the cloned
+# output. Where the problem's n IS the node count (133 / 261 / 323), O(n) means O(V).
+# 261's time also accepts O(n): it returns early unless len(edges) == n - 1, so E < V.
 EXPECTED: dict[int, tuple[list[str], list[str]]] = {
     # --- 1 Arrays & Hashing ---
     217: (["O(n)"], ["O(n)"]),            242: (["O(n)"], ["O(1)", "O(n)"]),
@@ -141,11 +146,11 @@ EXPECTED: dict[int, tuple[list[str], list[str]]] = {
     52:  (["O(n!)"], ["O(n)"]),           47:  (["O(n * n!)"], ["O(n)"]),
     # --- 11 Graphs ---
     200: (["O(m * n)"], ["O(m * n)"]),    695: (["O(m * n)"], ["O(m * n)"]),
-    133: (["O(V + E)"], ["O(V + E)"]),    286: (["O(m * n)"], ["O(m * n)"]),
+    133: (["O(V + E)"], ["O(V)", "O(n)", "O(V + E)"]),    286: (["O(m * n)"], ["O(m * n)"]),
     994: (["O(m * n)"], ["O(m * n)"]),    417: (["O(m * n)"], ["O(m * n)"]),
     130: (["O(m * n)"], ["O(m * n)"]),    207: (["O(V + E)"], ["O(V + E)"]),
-    210: (["O(V + E)"], ["O(V + E)"]),    261: (["O(V + E)"], ["O(V + E)"]),
-    323: (["O(V + E)"], ["O(V + E)"]),    684: (["O(n)"], ["O(n)"]),
+    210: (["O(V + E)"], ["O(V + E)"]),    261: (["O(V + E)", "O(n)"], ["O(V)", "O(n)", "O(V + E)"]),
+    323: (["O(V + E)"], ["O(V)", "O(n)", "O(V + E)"]),    684: (["O(n)"], ["O(n)"]),
     463: (["O(m * n)"], ["O(1)"]),        721: (["O(n log n)"], ["O(n)"]),
     997: (["O(n)"], ["O(n)"]),            310: (["O(V + E)"], ["O(V + E)"]),
     953: (["O(m * n)"], ["O(1)"]),

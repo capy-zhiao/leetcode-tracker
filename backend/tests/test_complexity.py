@@ -70,3 +70,23 @@ def test_blank_answer_never_matches():
 
 def test_coverage_is_substantial():
     assert len(EXPECTED) >= 200, "most of the 250 should have a reference answer"
+
+
+def test_clone_graph_space_is_the_visited_map_not_the_edges():
+    """oldtonew holds V entries and the recursion is at most V deep: O(V), which is
+    O(n) when n counts nodes. Time still has to include the edges."""
+    v = check(133, "O(n)", "O(n)")
+    assert v["space_ok"]
+    assert not v["time_ok"], "a dense graph has ~V^2 edges; O(n) time understates it"
+    assert check(133, "O(V+E)", "O(V)")["time_ok"]
+    assert check(133, "O(V+E)", "O(V + E)")["space_ok"], "counting the output is fine too"
+
+
+def test_union_find_problems_accept_the_parent_array_space():
+    for num in (261, 323):
+        assert check(num, "O(V + E)", "O(n)")["space_ok"], num
+
+
+def test_graph_valid_tree_time_is_linear_after_the_edge_check():
+    assert check(261, "O(n)", "O(n)")["time_ok"]
+    assert not check(323, "O(n)", "O(n)")["time_ok"], "323 has no edge-count guard"
