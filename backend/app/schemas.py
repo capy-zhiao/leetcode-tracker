@@ -66,7 +66,6 @@ class AttemptIn(BaseModel):
     seconds: int = Field(0, ge=0)
     looked_at_solution: bool = False
     had_bugs: bool = False
-    mistakes: list[str] = Field(default_factory=list)
     code: str = ""
     note: str = ""
     mode: str = "practice"
@@ -83,7 +82,6 @@ class AttemptOut(BaseModel):
     created_at: datetime
     grade: str
     seconds: int
-    mistakes: list[str]
     note: str
     mode: str
     code: str = ""
@@ -117,14 +115,6 @@ class GradeSuggestion(BaseModel):
     reason: str
 
 
-class MistakeStat(BaseModel):
-    id: str
-    label: str
-    hint: str
-    count: int
-    pct: float
-
-
 class ChapterStat(BaseModel):
     chapter_num: int
     chapter: str
@@ -143,7 +133,6 @@ class StatsOut(BaseModel):
     streak_days: int
     avg_seconds: int
     by_chapter: list[ChapterStat]
-    top_mistakes: list[MistakeStat]
 
 
 class FollowUpOut(BaseModel):

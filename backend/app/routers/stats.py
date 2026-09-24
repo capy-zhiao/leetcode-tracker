@@ -1,4 +1,4 @@
-"""Stats dashboard. The mistake ranking is the most personally useful part."""
+"""Stats dashboard: progress, streaks, pattern proficiency and complexity accuracy."""
 from collections import Counter
 from datetime import timedelta
 
@@ -7,12 +7,11 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session, selectinload
 
 from ..complexity import EXPECTED, check as check_complexity
-from ..constants import MISTAKE_TAGS
 from ..database import get_db
 from ..deps import local_date, today as get_today
 from ..models import Attempt, Problem
 from ..patterns import PATTERN_TEMPLATE, PATTERNS, describe, label, patterns_for
-from ..schemas import ChapterStat, ComplexityStat, MistakeStat, PatternStat, StatsOut
+from ..schemas import ChapterStat, ComplexityStat, PatternStat, StatsOut
 
 router = APIRouter(prefix="/stats", tags=["stats"])
 
@@ -75,26 +74,7 @@ def overview(db: Session = Depends(get_db)):
         streak_days=_streak(db),
         avg_seconds=int(sum(timed) / len(timed)) if timed else 0,
         by_chapter=by_chapter,
-        top_mistakes=mistake_ranking(db),
     )
-
-
-@router.get("/mistakes", response_model=list[MistakeStat])
-def mistake_ranking(db: Session = Depends(get_db)) -> list[MistakeStat]:
-    """Your mistake ranking — with enough data this becomes a personal pre-submit checklist."""
-    counter: Counter[str] = Counter()
-    for a in db.scalars(select(Attempt)):
-        counter.update(a.mistakes or [])
-    total = sum(counter.values())
-    meta = {t["id"]: t for t in MISTAKE_TAGS}
-    return [
-        MistakeStat(
-            id=mid, label=meta[mid]["label"], hint=meta[mid]["hint"],
-            count=cnt, pct=round(cnt / total * 100, 1) if total else 0.0,
-        )
-        for mid, cnt in counter.most_common()
-        if mid in meta
-    ]
 
 
 @router.get("/heatmap")

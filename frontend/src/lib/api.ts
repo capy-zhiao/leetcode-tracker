@@ -2,7 +2,7 @@
 // swapping the base URL or adding an API key is a one-file change.
 import type {
   AnswerGrade, Attempt, AttemptIn, AttemptResult, BlindWriteResult,
-  ComplexityStats, DailyQueue, FollowUp, InterviewQuestion, MistakeTag, MockStart,
+  ComplexityStats, DailyQueue, FollowUp, InterviewQuestion, MockStart,
   PatternStat, Problem, ProblemDetail, Stats, TemplateSummary,
 } from './types'
 
@@ -62,7 +62,6 @@ export const api = {
   problem: (number: number) => request<ProblemDetail>(`/problems/${number}`),
   updateProblem: (number: number, body: { notes?: string; code?: string }) =>
     request<ProblemDetail>(`/problems/${number}`, { method: 'PATCH', body: JSON.stringify(body) }),
-  mistakeTags: () => request<MistakeTag[]>('/problems/mistake-tags'),
 
   // --- template blind-write drills ---
   templates: () => request<TemplateSummary[]>('/templates'),

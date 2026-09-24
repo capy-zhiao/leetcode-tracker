@@ -92,7 +92,9 @@ class Attempt(Base):
     seconds: Mapped[int] = mapped_column(Integer, default=0)
     looked_at_solution: Mapped[bool] = mapped_column(Boolean, default=False)
     had_bugs: Mapped[bool] = mapped_column(Boolean, default=False)
-    mistakes: Mapped[list] = mapped_column(JSON, default=list)   # ids from constants.MISTAKE_TAGS
+    # Legacy: mistake tags are no longer collected. The column stays so existing databases
+    # keep their shape (migrations here only ever add).
+    mistakes: Mapped[list] = mapped_column(JSON, default=list)
     code: Mapped[str] = mapped_column(Text, default="")
     note: Mapped[str] = mapped_column(Text, default="")          # one line: why you got stuck
     mode: Mapped[str] = mapped_column(String(10), default="practice")  # practice | mock | drill

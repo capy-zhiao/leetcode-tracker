@@ -1,4 +1,4 @@
-// Stats dashboard. The mistake ranking is the part that grows into a personal checklist.
+// Stats dashboard: headline numbers and progress by chapter.
 // It also holds the problem library: each chapter row expands into its problem list, and
 // the search box finds any problem by number or title.
 import { useEffect, useState } from 'react'
@@ -20,27 +20,6 @@ export default function Stats() {
         <Metric label="Average time"
                 value={s.avg_seconds ? `${Math.round(s.avg_seconds / 60)} min` : '—'} />
       </div>
-
-      {s.top_mistakes.length > 0 && (
-        <section className="card">
-          <h2 className="font-medium">🔴 Your mistake ranking</h2>
-          <p className="text-xs text-slate-400 mt-0.5 mb-3">
-            This is your personal pre-submit checklist — far more accurate than a generic one
-          </p>
-          <div className="space-y-2">
-            {s.top_mistakes.slice(0, 8).map((m, i) => (
-              <div key={m.id} className="flex items-center gap-3">
-                <span className="text-xs text-slate-400 w-4">{i + 1}</span>
-                <span className="w-56 text-sm truncate" title={m.hint}>{m.label}</span>
-                <div className="flex-1 h-4 bg-slate-100 rounded overflow-hidden">
-                  <div className="h-full bg-rose-400" style={{ width: `${m.pct}%` }} />
-                </div>
-                <span className="text-xs text-slate-500 w-20 text-right">{m.count}x · {m.pct}%</span>
-              </div>
-            ))}
-          </div>
-        </section>
-      )}
 
       <ChapterLibrary chapters={s.by_chapter} />
 

@@ -1,5 +1,5 @@
-// Solve page: time it -> write code -> state the complexity -> grade -> tag mistakes ->
-// submit -> SRS schedules the next review.
+// Solve page: time it -> write code -> state the complexity -> grade -> submit ->
+// SRS schedules the next review.
 //
 // Fully keyboard driven: Space toggles the timer, 1-4 pick a grade, Cmd+Enter submits from
 // anywhere including inside the editor.
@@ -8,7 +8,6 @@ import { Link, useLocation, useParams } from 'react-router-dom'
 import CodeEditor from '../components/CodeEditor'
 import ComplexityPicker from '../components/ComplexityPicker'
 import GradeBar from '../components/GradeBar'
-import MistakePicker from '../components/MistakePicker'
 import PatternChips from '../components/PatternChips'
 import Timer, { formatTime, useTimer } from '../components/Timer'
 import { api } from '../lib/api'
@@ -33,7 +32,6 @@ export default function Solve() {
   const [code, setCode] = useState('')
   const [grade, setGrade] = useState<Grade | null>(null)
   const [suggestion, setSuggestion] = useState('')
-  const [mistakes, setMistakes] = useState<string[]>([])
   const [note, setNote] = useState('')
   const [lookedAtSolution, setLooked] = useState(false)
   const [hadBugs, setHadBugs] = useState(false)
@@ -87,7 +85,7 @@ export default function Solve() {
     try {
       const r = await api.submitAttempt(num, {
         grade: grade!, seconds: timer.seconds, looked_at_solution: lookedAtSolution,
-        had_bugs: hadBugs, mistakes, code, note, mode: 'practice',
+        had_bugs: hadBugs, code, note, mode: 'practice',
         time_complexity: timeComplexity, space_complexity: spaceComplexity,
       })
       setResult({ days: r.next_due_in_days })
@@ -219,16 +217,6 @@ export default function Solve() {
           state={aiState} verdict={aiVerdict} error={aiError}
           onRetry={attemptId !== null ? () => runAiComplexity(attemptId) : undefined}
         />
-
-        <div>
-          <p className="text-sm font-medium mb-1.5">
-            What went wrong?
-            <span className="text-xs text-slate-400 ml-1">
-              (enough of these become your personal pre-submit checklist)
-            </span>
-          </p>
-          <MistakePicker selected={mistakes} onChange={setMistakes} />
-        </div>
 
         <input
           value={note} onChange={(e) => setNote(e.target.value)}

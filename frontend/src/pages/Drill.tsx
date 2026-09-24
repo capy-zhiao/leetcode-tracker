@@ -54,7 +54,7 @@ export default function Drill() {
     try {
       const r = await api.submitAttempt(num, {
         grade, seconds: timer.seconds, looked_at_solution: gaveUp,
-        had_bugs: false, mistakes: [], code, note: '', mode: 'drill',
+        had_bugs: false, code, note: '', mode: 'drill',
         time_complexity: '', space_complexity: '',
         blindwrite_score: checked
           ? checked.checks.filter((c) => c.passed).length / checked.checks.length

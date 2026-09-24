@@ -79,7 +79,6 @@ def submit_attempt(
         seconds=payload.seconds,
         looked_at_solution=payload.looked_at_solution,
         had_bugs=payload.had_bugs,
-        mistakes=payload.mistakes,
         code=payload.code,
         note=payload.note,
         mode=payload.mode,

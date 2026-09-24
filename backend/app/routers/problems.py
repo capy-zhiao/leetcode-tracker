@@ -3,7 +3,6 @@ from fastapi import APIRouter, Depends, Query
 from sqlalchemy import select
 from sqlalchemy.orm import Session, selectinload
 
-from ..constants import MISTAKE_TAGS
 from ..database import get_db
 from ..deps import get_problem
 from ..models import Problem
@@ -52,12 +51,6 @@ def list_problems(
     elif status_filter == "mastered":
         items = [p for p in items if p.state and p.state.interval_days >= 21]
     return items
-
-
-@router.get("/mistake-tags")
-def mistake_tags():
-    """Feeds the "what went wrong" picker in the UI."""
-    return MISTAKE_TAGS
 
 
 @router.get("/{number}", response_model=ProblemDetail)

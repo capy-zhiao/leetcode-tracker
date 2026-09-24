@@ -3,10 +3,10 @@
 [![CI](https://github.com/capy-zhiao/leetcode-tracker/actions/workflows/ci.yml/badge.svg)](https://github.com/capy-zhiao/leetcode-tracker/actions/workflows/ci.yml)
 ![Python](https://img.shields.io/badge/python-3.12%20%7C%203.13-blue)
 ![React](https://img.shields.io/badge/react-18-61dafb)
-![Tests](https://img.shields.io/badge/tests-177-brightgreen)
+![Tests](https://img.shields.io/badge/tests-176-brightgreen)
 
 A spaced-repetition tracker for the **NeetCode 250**: it decides what to practise each day,
-schedules reviews on a forgetting curve, tracks your personal bug patterns, and runs timed
+schedules reviews on a forgetting curve, checks your complexity analysis, and runs timed
 mock interviews with LLM-generated follow-up questions.
 
 > Built because a hand-maintained markdown study plan stops scaling at 250 problems —
@@ -20,7 +20,6 @@ mock interviews with LLM-generated follow-up questions.
 | **Adaptive scheduling** | Each problem's next review is computed from how the attempt actually went. When more is due than you can finish, the queue ranks by priority and defers the rest |
 | **Daily queue** | Reviews + new problems + one template drill, replacing the manual plan |
 | **Timer with auto-grading** | Stops the clock and suggests a grade from your time and the problem's difficulty — no guessing how well you "felt" you did |
-| **Mistake pattern tracking** | 15 tags; once you have some history it ranks them into a **personal pre-submit checklist** |
 | **Solution history & diff** | Every submission is archived, so a second pass can be compared against the first |
 | **Mock interview** | Random problem, countdown, notes hidden, then **follow-up questions about the code you just wrote** — answer each in writing and an LLM grades it (strong / good / partial / weak, what you missed, a model answer) |
 | **Template blind-writing** | Write one of 15 algorithm skeletons from memory; it is graded against **checkpoints** (does `find` loop with `while`?) rather than text similarity, then shown as a diff |

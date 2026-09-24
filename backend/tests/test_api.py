@@ -35,7 +35,7 @@ def test_daily_cap_defers_overflow(client, sample_problems):
 
 def test_submit_attempt_updates_srs(client, sample_problems):
     r = client.post("/review/1/attempt", json={
-        "grade": "good", "seconds": 600, "mistakes": ["forgot_return"],
+        "grade": "good", "seconds": 600,
         "code": "class Solution: pass", "note": "hash map of complements",
     })
     assert r.status_code == 200, r.text
@@ -56,7 +56,6 @@ def test_submit_attempt_updates_srs(client, sample_problems):
 def test_again_grade_resets_and_counts_lapse(client, sample_problems):
     r = client.post("/review/200/attempt", json={
         "grade": "again", "seconds": 1800, "looked_at_solution": True,
-        "mistakes": ["missing_visited_brake", "type_confusion"],
     })
     body = r.json()
     assert body["next_due_in_days"] == 1
@@ -72,18 +71,6 @@ def test_grade_suggestion_from_timer(client):
     r = client.get("/review/suggest-grade",
                    params={"seconds": 1500, "difficulty": "Medium"})
     assert r.json()["grade"] == "hard"
-
-
-def test_mistake_stats_aggregate(client, sample_problems):
-    client.post("/review/1/attempt", json={"grade": "good", "mistakes": ["forgot_return"]})
-    client.post("/review/200/attempt", json={"grade": "hard",
-                                             "mistakes": ["forgot_return", "type_confusion"]})
-    stats = client.get("/stats/mistakes").json()
-    assert stats[0]["id"] == "forgot_return"
-    assert stats[0]["count"] == 2
-    assert stats[0]["pct"] > 60
-    assert stats[0]["label"]                     # label and hint come along for the UI
-    assert stats[0]["hint"]
 
 
 def test_overview_stats(client, sample_problems):
