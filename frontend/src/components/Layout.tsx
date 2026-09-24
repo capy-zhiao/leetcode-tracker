@@ -8,7 +8,6 @@ import { useHotkeys } from '../lib/useHotkeys'
 const links = [
   { to: '/', label: 'Today' },
   { to: '/drill', label: 'Drills' },
-  { to: '/problems', label: 'Problems' },
   { to: '/patterns', label: 'Patterns' },
   { to: '/mock', label: 'Mock Interview' },
   { to: '/stats', label: 'Stats' },

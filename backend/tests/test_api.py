@@ -152,3 +152,13 @@ def test_forecast_counts_problems_but_not_template_drills(client, sample_problem
 
 def test_queue_reports_the_review_cap(client, sample_problems):
     assert client.get("/review/today", params={"review_cap": 3}).json()["review_cap"] == 3
+
+
+def test_problem_list_follows_neetcode_order_within_a_chapter(client, db_session):
+    from app.models import Problem
+    for n in (5, 70, 746, 198, 1137):     # 1137 is a 250 addition
+        db_session.add(Problem(number=n, title=f"P{n}", difficulty="Medium", chapter_num=13,
+                               chapter="1-D DP", url="", kind="problem"))
+    db_session.commit()
+    got = [p["number"] for p in client.get("/problems", params={"chapter": 13}).json()]
+    assert got == [70, 746, 198, 5, 1137]

@@ -7,6 +7,7 @@ from ..constants import MISTAKE_TAGS
 from ..database import get_db
 from ..deps import get_problem
 from ..models import Problem
+from ..scheduler import roadmap_key
 from ..schemas import ProblemDetail, ProblemOut
 
 router = APIRouter(prefix="/problems", tags=["problems"])
@@ -35,7 +36,9 @@ def list_problems(
         else:
             stmt = stmt.where(Problem.title.ilike(f"%{q}%"))
 
-    items = list(db.scalars(stmt.order_by(Problem.chapter_num, Problem.number)))
+    # NeetCode's own order within a chapter (70, 746, 198 ...), additions after — the
+    # same order the new-problem queue follows.
+    items = sorted(db.scalars(stmt), key=roadmap_key)
 
     if pattern:
         # patterns is a JSON column; filtering in Python keeps this portable across
