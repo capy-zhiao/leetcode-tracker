@@ -90,6 +90,7 @@ class AttemptOut(BaseModel):
     time_complexity: str = ""
     space_complexity: str = ""
     complexity_ok: bool | None = None
+    complexity_ai: dict | None = None
 
 
 class ComplexityCheck(BaseModel):

@@ -11,6 +11,16 @@ from app.main import app
 from app.models import Problem, ReviewState
 
 
+@pytest.fixture(autouse=True)
+def no_real_llm(monkeypatch):
+    """Settings are read from backend/.env, so once a real key lives there every test run
+    would call the paid API. Force AI off; tests that need it install a stub provider."""
+    from app import llm
+    from app.config import settings
+    monkeypatch.setattr(settings, "llm_provider", "none")
+    monkeypatch.setattr(llm, "_cached", None)
+
+
 @pytest.fixture
 def db_session():
     engine = create_engine(

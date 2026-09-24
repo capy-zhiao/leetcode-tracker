@@ -14,7 +14,7 @@ import Timer, { formatTime, useTimer } from '../components/Timer'
 import { api } from '../lib/api'
 import { useHotkeys } from '../lib/useHotkeys'
 import type {
-  Attempt, CodeReview, ComplexityCheck, Grade, ProblemDetail,
+  Attempt, CodeReview, ComplexityCheck, ComplexityVerdict, Grade, ProblemDetail,
 } from '../lib/types'
 
 const GRADE_ORDER: Grade[] = ['again', 'hard', 'good', 'easy']
@@ -42,6 +42,12 @@ export default function Solve() {
   const [choices, setChoices] = useState<string[]>([])
   const [result, setResult] = useState<{ days: number } | null>(null)
   const [complexity, setComplexity] = useState<ComplexityCheck | null>(null)
+  // AI complexity check: runs after submitting, because thinking mode is slow
+  const [aiEnabled, setAiEnabled] = useState(false)
+  const [aiVerdict, setAiVerdict] = useState<ComplexityVerdict | null>(null)
+  const [aiState, setAiState] = useState<'idle' | 'running' | 'failed'>('idle')
+  const [aiError, setAiError] = useState('')
+  const [attemptId, setAttemptId] = useState<number | null>(null)
   const [aiReview, setAiReview] = useState<CodeReview | null>(null)
   const [busy, setBusy] = useState(false)
 
@@ -57,7 +63,10 @@ export default function Solve() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [num])
 
-  useEffect(() => { api.complexityChoices().then(setChoices).catch(() => {}) }, [])
+  useEffect(() => {
+    api.complexityChoices().then(setChoices).catch(() => {})
+    api.health().then((h) => setAiEnabled(h.llm_enabled)).catch(() => {})
+  }, [])
 
   // Stopping the timer asks the backend which grade the performance deserves
   const stopAndSuggest = async () => {
@@ -84,8 +93,33 @@ export default function Solve() {
       })
       setResult({ days: r.next_due_in_days })
       setComplexity(r.complexity)
+      setAttemptId(r.attempt.id)
       setHistory(await api.attempts(num))
+      if (aiEnabled && code.trim()) runAiComplexity(r.attempt.id)   // not awaited
     } finally { setBusy(false) }
+  }
+
+  // Ask the AI to judge the stated complexity against the code actually written. Its
+  // verdict replaces the lookup-table one, which only knows the textbook solution.
+  const runAiComplexity = async (id: number) => {
+    setAiState('running')
+    setAiError('')
+    try {
+      const a = await api.aiComplexity(id)
+      const v = a.complexity_ai
+      if (!v) throw new Error('No verdict returned')
+      setAiVerdict(v)
+      setComplexity({
+        graded: true, time_ok: v.time_correct, space_ok: v.space_correct,
+        expected_time: v.actual_time, expected_space: v.actual_space,
+        accepted_time: [], accepted_space: [],
+      })
+      setAiState('idle')
+      setHistory(await api.attempts(num))
+    } catch (e) {
+      setAiState('failed')
+      setAiError((e as Error).message)
+    }
   }
 
   const runAiReview = async () => {
@@ -206,7 +240,11 @@ export default function Solve() {
         <ComplexityPicker
           time={timeComplexity} space={spaceComplexity}
           onTime={setTimeComplexity} onSpace={setSpaceComplexity}
-          choices={choices} result={complexity}
+          choices={choices} result={complexity} judgedBy={aiVerdict ? 'ai' : 'table'}
+        />
+        <AiComplexity
+          state={aiState} verdict={aiVerdict} error={aiError}
+          onRetry={attemptId !== null ? () => runAiComplexity(attemptId) : undefined}
         />
 
         <div>
@@ -257,8 +295,10 @@ export default function Solve() {
                 <span className="w-12">{a.grade}</span>
                 <span className="w-16 font-mono text-xs">{formatTime(a.seconds)}</span>
                 {a.complexity_ok !== null && (
-                  <span className="text-xs" title="complexity answer">
-                    {a.complexity_ok ? '✅' : '❌'} O
+                  <span className="text-xs"
+                        title={a.complexity_ai ? 'complexity, judged by AI against this code'
+                                               : 'complexity, checked against the reference'}>
+                    {a.complexity_ok ? '✅' : '❌'} O{a.complexity_ai && ' 🤖'}
                   </span>
                 )}
                 <span className="flex-1 truncate text-xs">{a.note}</span>
@@ -267,6 +307,48 @@ export default function Solve() {
           </div>
         </div>
       )}
+    </div>
+  )
+}
+
+function AiComplexity({
+  state, verdict, error, onRetry,
+}: {
+  state: 'idle' | 'running' | 'failed'
+  verdict: ComplexityVerdict | null
+  error: string
+  onRetry?: () => void
+}) {
+  if (state === 'running') {
+    return (
+      <p className="text-sm text-indigo-700 bg-indigo-50 border border-indigo-200 rounded-lg p-3">
+        🤖 Checking your complexity against the code you wrote… thinking mode can take up
+        to a minute.
+      </p>
+    )
+  }
+  if (state === 'failed') {
+    return (
+      <div className="text-sm text-slate-600 bg-slate-50 border border-slate-200 rounded-lg p-3
+                      flex items-center gap-3">
+        <span className="flex-1">🤖 AI check failed: {error}</span>
+        {onRetry && <button className="btn text-xs" onClick={onRetry}>Retry</button>}
+      </div>
+    )
+  }
+  if (!verdict) return null
+  return (
+    <div className="text-sm bg-indigo-50 border border-indigo-200 rounded-lg p-3 space-y-1">
+      <p className="text-indigo-950">
+        🤖 Your code: <b className="font-mono">{verdict.actual_time}</b> time,{' '}
+        <b className="font-mono">{verdict.actual_space}</b> space
+        {verdict.is_optimal
+          ? <span className="text-emerald-700"> · optimal</span>
+          : <span className="text-amber-700"> · not optimal — best is{' '}
+              <span className="font-mono">{verdict.optimal_time}</span> /{' '}
+              <span className="font-mono">{verdict.optimal_space}</span></span>}
+      </p>
+      <p className="text-indigo-900/80">{verdict.explanation}</p>
     </div>
   )
 }

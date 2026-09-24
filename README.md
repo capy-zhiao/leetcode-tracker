@@ -3,7 +3,7 @@
 [![CI](https://github.com/capy-zhiao/leetcode-tracker/actions/workflows/ci.yml/badge.svg)](https://github.com/capy-zhiao/leetcode-tracker/actions/workflows/ci.yml)
 ![Python](https://img.shields.io/badge/python-3.12%20%7C%203.13-blue)
 ![React](https://img.shields.io/badge/react-18-61dafb)
-![Tests](https://img.shields.io/badge/tests-135-brightgreen)
+![Tests](https://img.shields.io/badge/tests-150-brightgreen)
 
 A spaced-repetition tracker for the **NeetCode 250**: it decides what to practise each day,
 schedules reviews on a forgetting curve, tracks your personal bug patterns, and runs timed
@@ -145,7 +145,8 @@ Tests: `cd backend && ./.venv/bin/python -m pytest -q`
 
 ## 🤖 Enabling the AI features
 
-Follow-up generation and code review need a provider. Set `LLM_PROVIDER` in `backend/.env`:
+Follow-up generation, code review and the AI complexity check need a provider. Set
+`LLM_PROVIDER` in `backend/.env`:
 
 ```bash
 # Option A — Claude: best-quality follow-ups
@@ -157,8 +158,18 @@ ANTHROPIC_MODEL=claude-opus-5
 LLM_PROVIDER=deepseek
 DEEPSEEK_API_KEY=sk-...
 DEEPSEEK_MODEL=deepseek-flash        # or deepseek-v4-pro
-DEEPSEEK_BASE_URL=https://api.deepseek.com
+DEEPSEEK_BASE_URL=https://api.deepseek.com   # or an OpenAI-compatible relay
+DEEPSEEK_THINKING=true               # thinking mode; reasoning tokens bill as output
+DEEPSEEK_REASONING_EFFORT=high       # low | high | max
 ```
+
+**AI complexity check.** The built-in check compares your stated big-O with the textbook
+solution, so an honest O(n²) analysis of a brute-force answer is marked wrong. With a
+provider configured, every submission is also sent to the model, which judges your answer
+against *the code you actually wrote* and says separately whether that code is optimal;
+its verdict replaces the table's. It runs after the attempt is saved, since a
+thinking-mode reply can take up to a minute. At DeepSeek v4-pro peak rates that is
+roughly $0.01 a problem with thinking on and $0.0015 with it off.
 
 Follow-ups are generated once per problem and cached in the database, so building the full
 library for all 250 problems costs roughly **$0.20 on DeepSeek** or **$8 on Claude**, once.

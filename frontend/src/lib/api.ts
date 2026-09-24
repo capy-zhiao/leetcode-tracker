@@ -51,6 +51,9 @@ export const api = {
     }),
   attempts: (number: number) => request<Attempt[]>(`/review/${number}/attempts`),
   complexityChoices: () => request<string[]>('/review/complexity-choices'),
+  // Slow on purpose-built models with thinking on (can take tens of seconds)
+  aiComplexity: (attemptId: number) =>
+    request<Attempt>(`/review/attempts/${attemptId}/complexity-ai`, { method: 'POST' }),
 
   // --- problem library ---
   problems: (f?: { chapter?: number; difficulty?: string; status?: string; q?: string;

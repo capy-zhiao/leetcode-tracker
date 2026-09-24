@@ -98,6 +98,10 @@ class Attempt(Base):
     time_complexity: Mapped[str] = mapped_column(String(40), default="")
     space_complexity: Mapped[str] = mapped_column(String(40), default="")
     complexity_ok: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
+    # The LLM's analysis of THIS code (see llm.analyze_complexity). When present it decides
+    # complexity_ok, because it judges the solution actually written rather than comparing
+    # against the textbook one.
+    complexity_ai: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     # Template blind-writes only: fraction of checkpoints hit, 0..1
     blindwrite_score: Mapped[float | None] = mapped_column(Float, nullable=True)
 

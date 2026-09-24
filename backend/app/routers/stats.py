@@ -177,8 +177,9 @@ def pattern_proficiency(db: Session = Depends(get_db)):
 def complexity_accuracy(db: Session = Depends(get_db)):
     """How often the self-reported big-O was right.
 
-    Only attempts on problems with a reference answer count towards accuracy; the rest are
-    recorded but not graded, so the number never pretends to more certainty than it has.
+    An attempt counts when the AI has judged it or the problem has a reference answer;
+    the rest are recorded but not graded, so the number never pretends to more certainty
+    than it has. Where both exist, the AI verdict wins: it judged the code actually written.
     """
     numbers = {p.id: p.number for p in db.scalars(select(Problem))}
     answered = graded = t_ok = s_ok = both = 0
@@ -190,10 +191,15 @@ def complexity_accuracy(db: Session = Depends(get_db)):
             continue
         answered += 1
         num = numbers.get(a.problem_id)
-        if num is None or num not in EXPECTED:
+        if num is None:
             continue
-        verdict = check_complexity(num, a.time_complexity, a.space_complexity)
-        if verdict is None:
+        if a.complexity_ai:
+            # The AI judged the code actually written — prefer it over the lookup table.
+            verdict = {"time_ok": bool(a.complexity_ai.get("time_correct")),
+                       "space_ok": bool(a.complexity_ai.get("space_correct"))}
+        elif num in EXPECTED:
+            verdict = check_complexity(num, a.time_complexity, a.space_complexity)
+        else:
             continue
         graded += 1
         seen[num] += 1

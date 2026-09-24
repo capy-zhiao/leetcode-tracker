@@ -13,10 +13,12 @@ interface Props {
   onSpace: (v: string) => void
   choices: string[]
   result?: ComplexityCheck | null    // set after submitting
+  /** 'ai' when the verdict came from analysing the submitted code itself */
+  judgedBy?: 'table' | 'ai'
 }
 
 export default function ComplexityPicker({
-  time, space, onTime, onSpace, choices, result,
+  time, space, onTime, onSpace, choices, result, judgedBy = 'table',
 }: Props) {
   return (
     <div>
@@ -34,10 +36,10 @@ export default function ComplexityPicker({
       <div className="grid grid-cols-2 gap-2">
         <Field label="Time"  value={time}  onChange={onTime}
                ok={result?.graded ? result.time_ok : undefined}
-               expected={result?.expected_time} />
+               expected={result?.expected_time} judgedBy={judgedBy} />
         <Field label="Space" value={space} onChange={onSpace}
                ok={result?.graded ? result.space_ok : undefined}
-               expected={result?.expected_space} />
+               expected={result?.expected_space} judgedBy={judgedBy} />
       </div>
 
       {result && !result.graded && (
@@ -50,10 +52,10 @@ export default function ComplexityPicker({
 }
 
 function Field({
-  label, value, onChange, ok, expected,
+  label, value, onChange, ok, expected, judgedBy,
 }: {
   label: string; value: string; onChange: (v: string) => void
-  ok?: boolean; expected?: string
+  ok?: boolean; expected?: string; judgedBy: 'table' | 'ai'
 }) {
   // undefined = not graded yet, so the neutral border stays
   const border = ok === undefined ? 'border-slate-200'
@@ -71,7 +73,9 @@ function Field({
         spellCheck={false}
       />
       {ok === false && expected && (
-        <span className="text-xs text-red-600">expected {expected}</span>
+        <span className="text-xs text-red-600">
+          {judgedBy === 'ai' ? `your code is ${expected}` : `expected ${expected}`}
+        </span>
       )}
       {ok === true && <span className="text-xs text-emerald-600">correct</span>}
     </label>

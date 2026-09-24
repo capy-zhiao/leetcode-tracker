@@ -31,6 +31,7 @@ COLUMNS: dict[str, list[tuple[str, str]]] = {
         ("space_complexity", "VARCHAR(40) DEFAULT ''"),
         ("complexity_ok", "BOOLEAN"),
         ("blindwrite_score", "FLOAT"),
+        ("complexity_ai", "TEXT"),
     ],
 }
 

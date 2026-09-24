@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 from typing import TypeVar
 
 from pydantic import BaseModel, Field, ValidationError
@@ -41,6 +42,37 @@ class CodeReview(BaseModel):
     suggested_mistakes: list[str] = Field(
         description="IDs from the provided mistake-tag list that this code actually exhibits; empty if none"
     )
+
+
+class ComplexityVerdict(BaseModel):
+    actual_time: str = Field(description="Big-O time of THIS code as written, e.g. O(V + E)")
+    actual_space: str = Field(description="Big-O auxiliary space of THIS code as written")
+    time_correct: bool = Field(description="Does the candidate's stated time equal actual_time?")
+    space_correct: bool = Field(description="Does the candidate's stated space equal actual_space?")
+    optimal_time: str = Field(description="Best known time for this problem")
+    optimal_space: str = Field(description="Space of that best-known solution")
+    is_optimal: bool = Field(description="Is this code's time complexity optimal for the problem?")
+    explanation: str = Field(
+        description="Two or three sentences: define the variables, say where the dominant "
+                    "cost comes from, and if the candidate was wrong, what they missed"
+    )
+
+
+def extract_json(raw: str) -> str:
+    """Pull the JSON object out of a model reply.
+
+    JSON mode is documented for DeepSeek, but not in combination with thinking mode, and
+    third-party relays vary — so tolerate a markdown fence or a sentence around the object
+    instead of failing the whole call over formatting.
+    """
+    text = raw.strip()
+    fenced = re.search(r"```(?:json)?\s*(\{.*\})\s*```", text, re.DOTALL)
+    if fenced:
+        return fenced.group(1)
+    start, end = text.find("{"), text.rfind("}")
+    if start != -1 and end > start:
+        return text[start:end + 1]
+    return text
 
 
 # ---------------------------------------------------------------- providers
@@ -100,7 +132,23 @@ class DeepSeekProvider(_Provider):
         self._client = openai.OpenAI(
             api_key=settings.deepseek_api_key,
             base_url=settings.deepseek_base_url,
+            timeout=settings.llm_timeout_seconds,
         )
+
+    @staticmethod
+    def request_options() -> dict:
+        """Thinking-mode parameters. They go in extra_body, which the SDK merges into the
+        top level of the request JSON — reasoning_effort's values (low/high/max) are
+        DeepSeek's own, so they are kept out of the SDK's typed arguments."""
+        if settings.deepseek_thinking:
+            return {
+                "max_tokens": 16000,   # reasoning tokens count towards the limit
+                "extra_body": {
+                    "thinking": {"type": "enabled"},
+                    "reasoning_effort": settings.deepseek_reasoning_effort,
+                },
+            }
+        return {"max_tokens": 4000, "extra_body": {"thinking": {"type": "disabled"}}}
 
     def complete(self, prompt: str, schema: type[T]) -> T | None:
         o = self._openai
@@ -113,11 +161,19 @@ class DeepSeekProvider(_Provider):
         try:
             res = self._client.chat.completions.create(
                 model=settings.deepseek_model,
-                max_tokens=4000,
                 response_format={"type": "json_object"},
                 messages=[{"role": "user", "content": full}],
+                **self.request_options(),
             )
             raw = res.choices[0].message.content or ""
+            u = getattr(res, "usage", None)
+            if u is not None:
+                details = getattr(u, "completion_tokens_details", None)
+                log.info(
+                    "DeepSeek usage: prompt=%s completion=%s (reasoning=%s)",
+                    getattr(u, "prompt_tokens", "?"), getattr(u, "completion_tokens", "?"),
+                    getattr(details, "reasoning_tokens", "?") if details else "?",
+                )
         except o.NotFoundError:
             log.warning("DeepSeek: model not found — check DEEPSEEK_MODEL")
             return None
@@ -132,7 +188,7 @@ class DeepSeekProvider(_Provider):
             return None
 
         try:
-            return schema.model_validate_json(raw)
+            return schema.model_validate_json(extract_json(raw))
         except ValidationError as e:
             log.warning("DeepSeek: reply did not match the schema (%s)", e.error_count())
             return None
@@ -234,3 +290,53 @@ Be direct — skip the pleasantries."""
     valid = {t["id"] for t in MISTAKE_TAGS}
     review.suggested_mistakes = [m for m in review.suggested_mistakes if m in valid]
     return review
+
+
+def analyze_complexity(
+    title: str,
+    number: int,
+    code: str,
+    stated_time: str,
+    stated_space: str,
+    reference: tuple[list[str], list[str]] | None = None,
+) -> ComplexityVerdict | None:
+    """Judge the candidate's stated complexity against the code they actually wrote.
+
+    The lookup table in complexity.py compares against the textbook solution, so an honest
+    O(n^2) analysis of a brute-force answer is marked wrong. This asks the model about the
+    code itself, and separately whether it is optimal. The table's answer is passed along
+    as a hint, not as the answer key.
+    """
+    provider = get_provider()
+    if provider is None or not code.strip():
+        return None
+
+    ref = ""
+    if reference:
+        ref = (f"\nFor reference, the standard solution runs in {reference[0][0]} time and "
+               f"{reference[1][0]} space. The candidate's code may use a different approach — "
+               f"judge the code in front of you, not the standard solution.\n")
+
+    prompt = f"""You are grading a new-grad candidate's complexity analysis in a coding interview.
+
+Problem: LeetCode {number}. {title}
+
+Their code:
+```python
+{code}
+```
+
+They stated: time {stated_time or "(blank)"}, space {stated_space or "(blank)"}.
+{ref}
+Rules:
+- Analyse the code AS WRITTEN, including any inefficiency it has.
+- Space means auxiliary space (recursion stack, hash maps, queues), excluding the returned
+  output — but if the candidate's answer is only right when the output is counted, and
+  that is a reasonable reading, accept it and say so.
+- Accept equivalent notation: O(n) for O(V) when n is the node count, O(m*n) for O(n*m),
+  a stated bound that differs only by a constant.
+- Do not accept a looser or tighter bound: O(n) is wrong for O(n log n), and O(n^2) is
+  wrong for O(n) unless the code really is quadratic.
+- Name your variables in the explanation (n = ..., V = ..., E = ...)."""
+
+    return provider.complete(prompt, ComplexityVerdict)

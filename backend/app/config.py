@@ -14,6 +14,10 @@ class Settings(BaseSettings):
     deepseek_api_key: str = ""
     deepseek_model: str = "deepseek-flash"
     deepseek_base_url: str = "https://api.deepseek.com"
+    # Thinking mode (DeepSeek's default is on). Reasoning tokens are billed as output.
+    deepseek_thinking: bool = True
+    deepseek_reasoning_effort: str = "high"     # low | high | max
+    llm_timeout_seconds: int = 180              # thinking replies can take a while
 
     # Which timezone defines "today". Empty means the machine's local zone, which is what
     # you want for a personal tracker: practising at 9pm should count towards that evening,

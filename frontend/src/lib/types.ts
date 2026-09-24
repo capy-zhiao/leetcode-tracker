@@ -80,6 +80,19 @@ export interface Attempt {
   time_complexity: string
   space_complexity: string
   complexity_ok: boolean | null
+  complexity_ai: ComplexityVerdict | null
+}
+
+/** The LLM's analysis of the code actually submitted (backend llm.ComplexityVerdict). */
+export interface ComplexityVerdict {
+  actual_time: string
+  actual_space: string
+  time_correct: boolean
+  space_correct: boolean
+  optimal_time: string
+  optimal_space: string
+  is_optimal: boolean
+  explanation: string
 }
 
 export interface ComplexityCheck {

@@ -1,11 +1,12 @@
 """Daily queue and attempt submission — the entry point into the SRS engine."""
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 
 from ..config import settings
-from ..complexity import COMPLEXITY_CHOICES, check as check_complexity
+from .. import llm
+from ..complexity import COMPLEXITY_CHOICES, EXPECTED, check as check_complexity
 from ..database import get_db
 from ..deps import ensure_state, get_problem, today as get_today
 from ..models import Attempt, Problem
@@ -132,3 +133,35 @@ def complexity_choices():
 def attempt_history(problem: Problem = Depends(get_problem)):
     """History for this problem — lets you diff this attempt against the previous one."""
     return problem.attempts
+
+
+@router.post("/attempts/{attempt_id}/complexity-ai", response_model=AttemptOut)
+def ai_complexity(attempt_id: int, db: Session = Depends(get_db)):
+    """Have the LLM judge the stated complexity against the code actually submitted.
+
+    Separate from submitting, because a thinking-mode reply can take tens of seconds and
+    must not hold up recording the attempt. The verdict is stored on the attempt and, since
+    it judges the real code rather than the textbook solution, decides complexity_ok.
+    """
+    if not llm.is_enabled():
+        raise HTTPException(503, "AI features are off — set LLM_PROVIDER and a key in backend/.env")
+    attempt = db.get(Attempt, attempt_id)
+    if attempt is None:
+        raise HTTPException(404, f"No attempt {attempt_id}")
+    if not attempt.code.strip():
+        raise HTTPException(400, "This attempt has no code to analyse")
+
+    problem = attempt.problem
+    verdict = llm.analyze_complexity(
+        problem.title, problem.number, attempt.code,
+        attempt.time_complexity, attempt.space_complexity,
+        EXPECTED.get(problem.number),
+    )
+    if verdict is None:
+        raise HTTPException(502, "The AI call failed — the backend log has the reason")
+
+    attempt.complexity_ai = verdict.model_dump()
+    attempt.complexity_ok = verdict.time_correct and verdict.space_correct
+    db.commit()
+    db.refresh(attempt)
+    return attempt
