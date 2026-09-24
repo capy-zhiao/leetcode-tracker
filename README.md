@@ -3,7 +3,7 @@
 [![CI](https://github.com/capy-zhiao/leetcode-tracker/actions/workflows/ci.yml/badge.svg)](https://github.com/capy-zhiao/leetcode-tracker/actions/workflows/ci.yml)
 ![Python](https://img.shields.io/badge/python-3.12%20%7C%203.13-blue)
 ![React](https://img.shields.io/badge/react-18-61dafb)
-![Tests](https://img.shields.io/badge/tests-150-brightgreen)
+![Tests](https://img.shields.io/badge/tests-165-brightgreen)
 
 A spaced-repetition tracker for the **NeetCode 250**: it decides what to practise each day,
 schedules reviews on a forgetting curve, tracks your personal bug patterns, and runs timed
@@ -22,7 +22,7 @@ mock interviews with LLM-generated follow-up questions.
 | **Timer with auto-grading** | Stops the clock and suggests a grade from your time and the problem's difficulty — no guessing how well you "felt" you did |
 | **Mistake pattern tracking** | 15 tags; once you have some history it ranks them into a **personal pre-submit checklist** |
 | **Solution history & diff** | Every submission is archived, so a second pass can be compared against the first |
-| **Mock interview** | Random problem, countdown, notes hidden, then **interviewer follow-up questions** |
+| **Mock interview** | Random problem, countdown, notes hidden, then **follow-up questions about the code you just wrote** — answer each in writing and an LLM grades it (strong / good / partial / weak, what you missed, a model answer) |
 | **Template blind-writing** | Write one of 15 algorithm skeletons from memory; it is graded against **checkpoints** (does `find` loop with `while`?) rather than text similarity, then shown as a diff |
 | **Complexity self-check** | Time and space are **required** before an attempt can be submitted, and graded against a reference for 217 of the 250 problems |
 | **Proficiency by pattern** | 40 techniques cutting across the roadmap, ranked weakest first, each linked to the drill that fixes it |
@@ -170,6 +170,17 @@ against *the code you actually wrote* and says separately whether that code is o
 its verdict replaces the table's. It runs after the attempt is saved, since a
 thinking-mode reply can take up to a minute. At DeepSeek v4-pro peak rates that is
 roughly $0.01 a problem with thinking on and $0.0015 with it off.
+
+**AI mock interview.** After a timed mock, the model reads the code you wrote and asks three
+follow-ups about it — the extra array your DP allocates, an edge case your code handles
+oddly, a requirement change. You answer in writing; each answer is graded separately, so
+you can move on while the previous one is being judged. The key points a question expects
+are generated alongside it and stay hidden until you answer. They can be wrong, so the
+grader is told to re-check the problem rather than deduct for disagreeing with them.
+
+Replies are parsed defensively: one relay was observed echoing the requested schema back
+before the real answer, so the prompt lists the expected keys instead of pasting a JSON
+Schema, and the parser keeps the first object in the reply that actually validates.
 
 Follow-ups are generated once per problem and cached in the database, so building the full
 library for all 250 problems costs roughly **$0.20 on DeepSeek** or **$8 on Claude**, once.

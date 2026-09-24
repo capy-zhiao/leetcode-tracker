@@ -17,7 +17,7 @@ class Settings(BaseSettings):
     # Thinking mode (DeepSeek's default is on). Reasoning tokens are billed as output.
     deepseek_thinking: bool = True
     deepseek_reasoning_effort: str = "high"     # low | high | max
-    llm_timeout_seconds: int = 180              # thinking replies can take a while
+    llm_timeout_seconds: int = 300              # thinking replies via a relay took up to ~160s
 
     # Which timezone defines "today". Empty means the machine's local zone, which is what
     # you want for a personal tracker: practising at 9pm should count towards that evening,

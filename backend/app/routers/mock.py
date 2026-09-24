@@ -1,9 +1,13 @@
 """Mock interview: random problem, timer, interviewer follow-ups, AI code review.
 
-Follow-ups are generated once by the configured LLM and cached in the database,
-so each problem costs a single API call for its lifetime.
+Two kinds of follow-up:
+  /followups   about the problem in general; generated once and cached per problem, with a
+               generic offline fallback, so the flow works with no LLM configured
+  /interview   about the code written in this session; the candidate answers each question
+               in writing and the LLM grades the answer
 """
 import random
+from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import select
@@ -12,8 +16,11 @@ from sqlalchemy.orm import Session, selectinload
 from .. import llm
 from ..database import get_db
 from ..deps import get_problem
-from ..models import FollowUp, Problem
-from ..schemas import CodeReviewOut, FollowUpOut, MockStartOut, ProblemDetail
+from ..models import FollowUp, InterviewQA, Problem
+from ..schemas import (
+    AnswerGradeOut, AnswerIn, CodeReviewOut, FollowUpOut, InterviewQuestionOut,
+    InterviewStartIn, MockStartOut, ProblemDetail,
+)
 
 router = APIRouter(prefix="/mock", tags=["mock"])
 
@@ -107,4 +114,66 @@ def ai_code_review(
         summary=result.summary,
         issues=result.issues,
         suggested_mistakes=result.suggested_mistakes,
+    )
+
+
+@router.post("/{number}/interview", response_model=list[InterviewQuestionOut])
+def start_code_interview(
+    payload: InterviewStartIn,
+    problem: Problem = Depends(get_problem),
+    db: Session = Depends(get_db),
+):
+    """Generate follow-up questions about the code written in this session.
+
+    Key points are stored but not returned: they are revealed with the grade, so they
+    cannot be read before answering.
+    """
+    if not llm.is_enabled():
+        raise HTTPException(503, "AI interviews need LLM_PROVIDER and a key in backend/.env")
+    if not payload.code.strip():
+        raise HTTPException(400, "Write some code first — the questions are about your code")
+
+    items = llm.interview_followups(
+        problem.title, problem.number, problem.difficulty, payload.code,
+        payload.time_complexity, payload.space_complexity,
+    )
+    if not items:
+        raise HTTPException(502, "The AI call failed — the backend log has the reason")
+
+    rows = [
+        InterviewQA(problem_id=problem.id, code=payload.code,
+                    question=i.question, key_points=i.hint)
+        for i in items
+    ]
+    db.add_all(rows)
+    db.commit()
+    return [InterviewQuestionOut(id=r.id, question=r.question) for r in rows]
+
+
+@router.post("/qa/{qa_id}/answer", response_model=AnswerGradeOut)
+def answer_question(qa_id: int, payload: AnswerIn, db: Session = Depends(get_db)):
+    """Grade a written answer. Answering again replaces the previous answer and grade."""
+    if not llm.is_enabled():
+        raise HTTPException(503, "AI grading needs LLM_PROVIDER and a key in backend/.env")
+    qa = db.get(InterviewQA, qa_id)
+    if qa is None:
+        raise HTTPException(404, f"No interview question {qa_id}")
+    if not payload.answer.strip():
+        raise HTTPException(400, "The answer is empty")
+
+    problem = qa.problem
+    grade = llm.grade_answer(
+        problem.title, problem.number, qa.code, qa.question, qa.key_points, payload.answer,
+    )
+    if grade is None:
+        raise HTTPException(502, "The AI call failed — the backend log has the reason")
+
+    qa.answer = payload.answer
+    qa.grade = grade.model_dump()
+    qa.answered_at = datetime.now(timezone.utc)
+    db.commit()
+    return AnswerGradeOut(
+        id=qa.id, question=qa.question, answer=qa.answer, key_points=qa.key_points,
+        score=grade.score, feedback=grade.feedback, missing=grade.missing,
+        model_answer=grade.model_answer,
     )

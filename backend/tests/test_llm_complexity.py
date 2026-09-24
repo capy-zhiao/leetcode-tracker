@@ -178,3 +178,43 @@ def test_failed_ai_call_is_502_and_changes_nothing(client, sample_problems, stub
     assert client.post(f"/review/attempts/{aid}/complexity-ai").status_code == 502
     a = client.get("/review/200/attempts").json()[0]
     assert a["complexity_ai"] is None and a["complexity_ok"] is True
+
+
+# ---------------------------------------------------------------- relay quirks
+
+from app.llm import AnswerGrade, FollowUpBundle, describe_fields, json_candidates, parse_reply
+
+ECHOED = '''{"properties": {"score": {"type": "integer"}}, "required": ["score"], "type": "object"}
+```json
+{"score": 3, "feedback": "Good.", "missing": [], "model_answer": "Keep two {rolling} values."}
+```'''
+
+
+def test_reply_that_echoes_the_schema_first_still_parses():
+    """Seen on a relay: the schema is repeated verbatim, then the real answer is fenced."""
+    g = parse_reply(ECHOED, AnswerGrade)
+    assert g is not None and g.score == 3
+
+
+def test_braces_inside_strings_do_not_split_objects():
+    raw = '{"score": 2, "feedback": "use {x}", "missing": ["a } b"], "model_answer": "m"}'
+    assert json_candidates(raw) == [raw]
+    assert parse_reply(raw, AnswerGrade).missing == ["a } b"]
+
+
+def test_no_valid_object_returns_none():
+    assert parse_reply('{"nope": 1} and {"also": 2}', AnswerGrade) is None
+
+
+def test_field_list_is_sent_instead_of_raw_schema():
+    listing = describe_fields(AnswerGrade)
+    assert '"score" (integer (1..4))' in listing
+    assert '"missing" (array of string)' in listing
+    assert '"properties"' not in listing
+
+
+def test_nested_item_fields_are_described(monkeypatch):
+    provider, fake = make_provider(monkeypatch, '{"followups": []}')
+    provider.complete("P", FollowUpBundle)
+    content = fake.calls[0]["messages"][0]["content"]
+    assert 'Each element of "followups"' in content and '"hint" (string)' in content

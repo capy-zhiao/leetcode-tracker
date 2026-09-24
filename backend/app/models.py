@@ -49,6 +49,9 @@ class Problem(Base):
     followups: Mapped[list["FollowUp"]] = relationship(
         back_populates="problem", cascade="all, delete-orphan"
     )
+    interview_qas: Mapped[list["InterviewQA"]] = relationship(
+        back_populates="problem", cascade="all, delete-orphan"
+    )
 
 
 class ReviewState(Base):
@@ -119,3 +122,22 @@ class FollowUp(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow)
 
     problem: Mapped[Problem] = relationship(back_populates="followups")
+
+
+class InterviewQA(Base):
+    """One code-specific interviewer question from a mock interview, with the candidate's
+    answer and the LLM's grade. Unlike FollowUp these are not cached per problem: they are
+    generated from the code the candidate wrote in that session."""
+    __tablename__ = "interview_qas"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    problem_id: Mapped[int] = mapped_column(ForeignKey("problems.id"), index=True)
+    code: Mapped[str] = mapped_column(Text, default="")          # snapshot the question refers to
+    question: Mapped[str] = mapped_column(Text)
+    key_points: Mapped[str] = mapped_column(Text, default="")    # withheld until answered
+    answer: Mapped[str] = mapped_column(Text, default="")
+    grade: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow)
+    answered_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+
+    problem: Mapped[Problem] = relationship(back_populates="interview_qas")

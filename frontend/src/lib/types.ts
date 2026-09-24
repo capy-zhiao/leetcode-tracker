@@ -184,3 +184,18 @@ export interface ComplexityStats {
   accuracy: number
   worst: { number: number; title: string; wrong: number; attempts: number }[]
 }
+
+// --- code-aware mock interview ---
+
+export interface InterviewQuestion { id: number; question: string }
+
+export interface AnswerGrade {
+  id: number
+  question: string
+  answer: string
+  key_points: string
+  score: 1 | 2 | 3 | 4          // weak · partial · good · strong
+  feedback: string
+  missing: string[]
+  model_answer: string
+}

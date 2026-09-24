@@ -1,10 +1,14 @@
-// Mock interview: random problem, countdown, and interviewer follow-ups from the LLM.
-import { useState } from 'react'
+// Mock interview: random problem, countdown, then interviewer follow-ups.
+//
+// With an LLM configured and code written, the follow-ups are about THAT code, and each
+// written answer is graded. Otherwise it falls back to per-problem questions with key
+// points to self-check against.
+import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import CodeEditor from '../components/CodeEditor'
 import Timer, { useTimer } from '../components/Timer'
 import { api } from '../lib/api'
-import type { FollowUp, MockStart } from '../lib/types'
+import type { AnswerGrade, FollowUp, InterviewQuestion, MockStart } from '../lib/types'
 
 export default function Mock() {
   const [session, setSession] = useState<MockStart | null>(null)
@@ -18,13 +22,19 @@ export default function Mock() {
   const [timeComplexity, setTimeComplexity] = useState('')
   const [spaceComplexity, setSpaceComplexity] = useState('')
   const [loading, setLoading] = useState(false)
+  const [aiEnabled, setAiEnabled] = useState(false)
+  const [questions, setQuestions] = useState<InterviewQuestion[]>([])
+  const [interviewNote, setInterviewNote] = useState('')
   const timer = useTimer()
+
+  useEffect(() => { api.health().then((h) => setAiEnabled(h.llm_enabled)).catch(() => {}) }, [])
 
   const start = async () => {
     setLoading(true)
     try {
       const s = await api.mockStart({ difficulty: difficulty || undefined, only_solved: onlySolved })
-      setSession(s); setFollowups([]); setAnswered([]); setPhase('solving')
+      setSession(s); setFollowups([]); setAnswered([]); setQuestions([]); setPhase('solving')
+      setInterviewNote('')
       setCode(''); setTimeComplexity(''); setSpaceComplexity('')
       timer.reset(); timer.start()
     } catch (e) { alert((e as Error).message) } finally { setLoading(false) }
@@ -32,8 +42,23 @@ export default function Mock() {
 
   const toFollowup = async () => {
     timer.pause(); setPhase('followup'); setLoading(true)
-    try { setFollowups(await api.followups(session!.problem.number)) }
-    finally { setLoading(false) }
+    const number = session!.problem.number
+    try {
+      if (aiEnabled && code.trim()) {
+        try {
+          setQuestions(await api.startInterview(number, {
+            code, time_complexity: timeComplexity, space_complexity: spaceComplexity,
+          }))
+          return
+        } catch (e) {
+          // Never strand the interview: fall back to the per-problem questions
+          setInterviewNote(`Couldn't generate questions about your code (${(e as Error).message}) — using general ones.`)
+        }
+      } else if (aiEnabled) {
+        setInterviewNote('No code written, so these are general questions about the problem.')
+      }
+      setFollowups(await api.followups(number))
+    } finally { setLoading(false) }
   }
 
   // A real interview doesn't show you your own notes, so this page deliberately hides them.
@@ -46,6 +71,12 @@ export default function Mock() {
             Random problem, a clock, and no notes. Follow-ups come after — that is where
             real interviews are won or lost.
           </p>
+          {aiEnabled && (
+            <p className="text-sm text-indigo-700 mt-1">
+              🤖 The interviewer reads the code you write and asks about it. Answer each
+              question in writing and it gets graded.
+            </p>
+          )}
         </div>
         <div className="flex gap-2 items-center">
           <select value={difficulty} onChange={(e) => setDifficulty(e.target.value)} className="btn">
@@ -110,9 +141,21 @@ export default function Mock() {
       {phase === 'followup' && (
         <div className="card space-y-3">
           <h2 className="font-medium">
-            Interviewer follow-ups {loading && <span className="text-sm text-slate-400">generating…</span>}
+            Interviewer follow-ups
+            {questions.length > 0 && <span className="text-xs text-slate-400 ml-2">about your code · answer in writing, AI grades each one</span>}
           </h2>
-          {followups.map((f, i) => {
+          {loading && (
+            <p className="text-sm text-indigo-700 bg-indigo-50 border border-indigo-200 rounded-lg p-3">
+              {aiEnabled && code.trim()
+                ? '🤖 The interviewer is reading your code… this can take about a minute.'
+                : 'Loading questions…'}
+            </p>
+          )}
+          {interviewNote && <p className="text-xs text-slate-500">{interviewNote}</p>}
+
+          {questions.map((q, i) => <QuestionCard key={q.id} q={q} index={i} />)}
+
+          {questions.length === 0 && followups.map((f, i) => {
             const open = answered.includes(f.id)
             return (
               <div key={f.id} className="rounded-lg border border-slate-200 p-3">
@@ -139,6 +182,75 @@ export default function Mock() {
               Another one
             </button>
           </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+const SCORE: Record<number, { label: string; tone: string }> = {
+  4: { label: 'Strong',  tone: 'bg-emerald-100 text-emerald-800' },
+  3: { label: 'Good',    tone: 'bg-sky-100 text-sky-800' },
+  2: { label: 'Partial', tone: 'bg-amber-100 text-amber-800' },
+  1: { label: 'Weak',    tone: 'bg-rose-100 text-rose-800' },
+}
+
+/** One question: its own answer box and grading state, so several can be graded at once. */
+function QuestionCard({ q, index }: { q: InterviewQuestion; index: number }) {
+  const [answer, setAnswer] = useState('')
+  const [grading, setGrading] = useState(false)
+  const [grade, setGrade] = useState<AnswerGrade | null>(null)
+  const [error, setError] = useState('')
+
+  const submit = async () => {
+    if (!answer.trim() || grading) return
+    setGrading(true); setError('')
+    try { setGrade(await api.answerQuestion(q.id, answer)) }
+    catch (e) { setError((e as Error).message) }
+    finally { setGrading(false) }
+  }
+
+  const s = grade ? SCORE[grade.score] : null
+  return (
+    <div className="rounded-lg border border-slate-200 p-3 space-y-2">
+      <p className="font-medium text-sm">Q{index + 1}. {q.question}</p>
+      <textarea
+        value={answer}
+        onChange={(e) => setAnswer(e.target.value)}
+        onKeyDown={(e) => { if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') submit() }}
+        disabled={grading}
+        rows={3}
+        placeholder="Answer as you would out loud — in English, for practice"
+        className="w-full text-sm p-2 rounded-lg border border-slate-200 disabled:bg-slate-50"
+      />
+      <div className="flex items-center gap-2">
+        <button className="btn btn-primary text-xs" onClick={submit} disabled={grading || !answer.trim()}>
+          {grading ? 'Grading…' : grade ? 'Answer again' : 'Submit answer'}
+          {!grading && <kbd className="ml-1 text-[10px] opacity-60">⌘↵</kbd>}
+        </button>
+        {grading && <span className="text-xs text-slate-400">the interviewer is thinking — you can answer the next one meanwhile</span>}
+        {error && <span className="text-xs text-red-600">{error}</span>}
+      </div>
+
+      {grade && s && (
+        <div className="rounded-lg bg-slate-50 p-3 text-sm space-y-2">
+          <div className="flex items-baseline gap-2">
+            <span className={`chip ${s.tone}`}>{s.label} · {grade.score}/4</span>
+            <span className="text-slate-700">{grade.feedback}</span>
+          </div>
+          {grade.missing.length > 0 && (
+            <div>
+              <p className="text-xs font-medium text-slate-500">Missed</p>
+              <ul className="list-disc list-inside text-slate-700 space-y-0.5">
+                {grade.missing.map((m, k) => <li key={k}>{m}</li>)}
+              </ul>
+            </div>
+          )}
+          <details>
+            <summary className="text-xs text-slate-500 cursor-pointer">Model answer and key points</summary>
+            <p className="mt-1 text-slate-700">{grade.model_answer}</p>
+            <p className="mt-1 text-xs text-slate-500">💡 {grade.key_points}</p>
+          </details>
         </div>
       )}
     </div>

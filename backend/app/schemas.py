@@ -225,3 +225,32 @@ class ComplexityStat(BaseModel):
     both_correct: int
     accuracy: float
     worst: list[dict]            # problems most often answered wrong
+
+
+# --- code-aware mock interview ---
+
+class InterviewStartIn(BaseModel):
+    code: str
+    time_complexity: str = ""
+    space_complexity: str = ""
+
+
+class InterviewQuestionOut(BaseModel):
+    """A question as shown before answering — key points deliberately left out."""
+    id: int
+    question: str
+
+
+class AnswerIn(BaseModel):
+    answer: str
+
+
+class AnswerGradeOut(BaseModel):
+    id: int
+    question: str
+    answer: str
+    key_points: str
+    score: int                 # 1 weak · 2 partial · 3 good · 4 strong
+    feedback: str
+    missing: list[str]
+    model_answer: str

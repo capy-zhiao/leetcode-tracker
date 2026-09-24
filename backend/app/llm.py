@@ -44,6 +44,19 @@ class CodeReview(BaseModel):
     )
 
 
+class AnswerGrade(BaseModel):
+    score: int = Field(ge=1, le=4, description="1 weak, 2 partial, 3 good, 4 strong")
+    feedback: str = Field(description="One or two sentences, the way an interviewer would react")
+    missing: list[str] = Field(
+        description="Specific points the answer missed or got wrong, one sentence each; "
+                    "empty list if none"
+    )
+    model_answer: str = Field(
+        description="A strong answer, three or four sentences, phrased the way a candidate "
+                    "would say it out loud"
+    )
+
+
 class ComplexityVerdict(BaseModel):
     actual_time: str = Field(description="Big-O time of THIS code as written, e.g. O(V + E)")
     actual_space: str = Field(description="Big-O auxiliary space of THIS code as written")
@@ -59,20 +72,73 @@ class ComplexityVerdict(BaseModel):
 
 
 def extract_json(raw: str) -> str:
-    """Pull the JSON object out of a model reply.
+    """The most likely JSON object in a model reply (first candidate from json_candidates)."""
+    found = json_candidates(raw)
+    return found[0] if found else raw.strip()
+
+
+def json_candidates(raw: str) -> list[str]:
+    """Every JSON object in a reply, most likely first: fenced blocks, then balanced
+    top-level {...} spans.
 
     JSON mode is documented for DeepSeek, but not in combination with thinking mode, and
-    third-party relays vary — so tolerate a markdown fence or a sentence around the object
-    instead of failing the whole call over formatting.
+    third-party relays vary. One relay was seen echoing the requested schema back before
+    the real answer in a ```json fence — so a reply can hold several objects, and the
+    caller keeps the first one that actually validates.
     """
     text = raw.strip()
-    fenced = re.search(r"```(?:json)?\s*(\{.*\})\s*```", text, re.DOTALL)
-    if fenced:
-        return fenced.group(1)
-    start, end = text.find("{"), text.rfind("}")
-    if start != -1 and end > start:
-        return text[start:end + 1]
-    return text
+    out = [m.group(1) for m in re.finditer(r"```(?:json)?\s*(\{.*?\})\s*```", text, re.DOTALL)]
+    depth, start, in_str, esc = 0, -1, False, False
+    for i, ch in enumerate(text):
+        if in_str:
+            if esc:
+                esc = False
+            elif ch == "\\":
+                esc = True
+            elif ch == '"':
+                in_str = False
+            continue
+        if ch == '"':
+            in_str = True
+        elif ch == "{":
+            if depth == 0:
+                start = i
+            depth += 1
+        elif ch == "}" and depth:
+            depth -= 1
+            if depth == 0:
+                out.append(text[start:i + 1])
+    seen, unique = set(), []
+    for c in out:
+        if c not in seen:
+            seen.add(c)
+            unique.append(c)
+    return unique
+
+
+def parse_reply(raw: str, schema: type[T]) -> T | None:
+    """The first JSON object in `raw` that validates against `schema`, else None."""
+    for candidate in json_candidates(raw):
+        try:
+            return schema.model_validate_json(candidate)
+        except ValidationError:
+            continue
+    return None
+
+
+def describe_fields(schema: type[BaseModel]) -> str:
+    """A plain field list for the prompt. Pasting the raw JSON Schema invites a model to
+    echo it back verbatim instead of filling it in."""
+    js = schema.model_json_schema()
+    lines = []
+    for name, prop in js.get("properties", {}).items():
+        kind = prop.get("type", "object")
+        if kind == "array":
+            kind = f"array of {prop.get('items', {}).get('type', 'object')}"
+        if "minimum" in prop or "maximum" in prop:
+            kind += f" ({prop.get('minimum', '')}..{prop.get('maximum', '')})"
+        lines.append(f'- "{name}" ({kind}): {prop.get("description", "")}')
+    return "\n".join(lines)
 
 
 # ---------------------------------------------------------------- providers
@@ -152,11 +218,16 @@ class DeepSeekProvider(_Provider):
 
     def complete(self, prompt: str, schema: type[T]) -> T | None:
         o = self._openai
-        shape = json.dumps(schema.model_json_schema(), ensure_ascii=False, indent=2)
+        fields = describe_fields(schema)
+        nested = ""
+        for name, sub in schema.model_fields.items():
+            item = getattr(sub.annotation, "__args__", (None,))[0]
+            if isinstance(item, type) and issubclass(item, BaseModel):
+                nested += f'\nEach element of "{name}" is an object with:\n{describe_fields(item)}'
         full = (
             f"{prompt}\n\n"
-            f"Respond with a single JSON object matching this schema exactly. "
-            f"Output JSON only, no markdown fences, no commentary.\n\n{shape}"
+            f"Reply with ONE JSON object and nothing else — no markdown fences, no "
+            f"commentary, do not repeat these instructions. Its keys:\n{fields}{nested}"
         )
         try:
             res = self._client.chat.completions.create(
@@ -187,11 +258,11 @@ class DeepSeekProvider(_Provider):
             log.warning("DeepSeek: could not reach the API")
             return None
 
-        try:
-            return schema.model_validate_json(extract_json(raw))
-        except ValidationError as e:
-            log.warning("DeepSeek: reply did not match the schema (%s)", e.error_count())
-            return None
+        parsed = parse_reply(raw, schema)
+        if parsed is None:
+            log.warning("DeepSeek: no JSON object in the reply matched %s: %.300r",
+                        schema.__name__, raw)
+        return parsed
 
 
 _cached: _Provider | None = None
@@ -340,3 +411,86 @@ Rules:
 - Name your variables in the explanation (n = ..., V = ..., E = ...)."""
 
     return provider.complete(prompt, ComplexityVerdict)
+
+
+def interview_followups(
+    title: str, number: int, difficulty: str, code: str,
+    stated_time: str = "", stated_space: str = "", n: int = 3,
+) -> list[FollowUpItem]:
+    """Follow-up questions about the code the candidate just wrote.
+
+    generate_followups() asks about the problem in general and is cached per problem; these
+    are specific to one submission, the way a real interviewer reacts to what is on the
+    screen: the recursion depth of this DFS, the extra array this DP allocates.
+    """
+    provider = get_provider()
+    if provider is None or not code.strip():
+        return []
+
+    prompt = f"""You are a senior engineer running a coding interview for a new-grad role.
+
+The candidate just solved LeetCode {number}. {title} ({difficulty}) with this code:
+
+```python
+{code}
+```
+
+They stated the complexity as: time {stated_time or "(not stated)"}, space {stated_space or "(not stated)"}.
+
+Ask the {n} follow-up questions you would ask about THIS code in a real interview. Rules:
+- Ground each question in the code on screen — refer to its actual choices (the recursion,
+  the extra array, the data structure picked, how it handles a particular input).
+- If the stated complexity is wrong, or the code is not optimal, one question should
+  probe that without giving the answer away.
+- Mix angles: optimisation or trade-offs, an edge case or failure mode this code might
+  hit, and a requirement change (scale, streaming, concurrency, a variant of the problem).
+- Order from easier to harder. One sentence per question, no hints inside the question.
+- If a question uses an input the problem's constraints rule out, say so in the question,
+  and write key points that accept any well-reasoned behaviour rather than one answer.
+- For each, give the key points a strong answer covers (two or three sentences). These
+  are hidden from the candidate until they answer."""
+
+    result = provider.complete(prompt, FollowUpBundle)
+    return result.followups[:n] if result else []
+
+
+def grade_answer(
+    title: str, number: int, code: str, question: str, key_points: str, answer: str,
+) -> AnswerGrade | None:
+    """Grade a candidate's written answer to one follow-up question."""
+    provider = get_provider()
+    if provider is None or not answer.strip():
+        return None
+
+    prompt = f"""You are the interviewer. Grade the candidate's answer to your follow-up question.
+
+Problem: LeetCode {number}. {title}
+Their code:
+```python
+{code}
+```
+
+Your question: {question}
+Key points you were looking for: {key_points}
+
+Their answer (verbatim, between the tags):
+<answer>
+{answer}
+</answer>
+
+Grading:
+- 4 strong: correct and complete, would move the interview forward with confidence
+- 3 good: correct with a minor gap
+- 2 partial: right direction but a significant gap or imprecision
+- 1 weak: incorrect, or does not address the question
+Judge the substance, not the wording or language — a terse correct answer is still
+correct. Credit valid points that are not in your key points. Be specific about what is
+missing; do not invent gaps to fill the list.
+
+Your key points were written in advance and may be incomplete or wrong. If the answer
+contradicts them with a sound argument, re-check the problem statement and constraints
+yourself instead of deducting for the disagreement. Where the question is genuinely
+ambiguous (for example an input the problem's constraints rule out), accept any
+well-reasoned position and say that it is ambiguous."""
+
+    return provider.complete(prompt, AnswerGrade)
