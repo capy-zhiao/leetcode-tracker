@@ -3,7 +3,7 @@
 [![CI](https://github.com/capy-zhiao/leetcode-tracker/actions/workflows/ci.yml/badge.svg)](https://github.com/capy-zhiao/leetcode-tracker/actions/workflows/ci.yml)
 ![Python](https://img.shields.io/badge/python-3.12%20%7C%203.13-blue)
 ![React](https://img.shields.io/badge/react-18-61dafb)
-![Tests](https://img.shields.io/badge/tests-176-brightgreen)
+![Tests](https://img.shields.io/badge/tests-184-brightgreen)
 
 A spaced-repetition tracker for the **NeetCode 250**: it decides what to practise each day,
 schedules reviews on a forgetting curve, checks your complexity analysis, and runs timed
@@ -161,6 +161,12 @@ DEEPSEEK_THINKING=true               # thinking mode; reasoning tokens bill as o
 DEEPSEEK_REASONING_EFFORT=high       # low | high | max
 DEEPSEEK_COMPLEXITY_MODEL=deepseek-v4-flash   # optional: cheaper model for the complexity check
 ```
+
+The Stats page shows the remaining credit on the provider's account — read from a
+new-api/one-api relay's token-usage endpoint (units converted to dollars with the ratio the
+relay itself reports) or from DeepSeek's official balance endpoint. Balance reads are account
+queries, not model calls: ten forced refreshes left the used-credit counter unchanged. The
+result is cached for a minute.
 
 Each task can run on its own model: the complexity check is a small, mechanical judgement
 and runs well on flash, while interview questions and answer grading stay on the default

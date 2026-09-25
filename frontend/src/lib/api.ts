@@ -1,7 +1,7 @@
 // Single place every network call goes through, so error handling lives in one spot and
 // swapping the base URL or adding an API key is a one-file change.
 import type {
-  AnswerGrade, Attempt, AttemptIn, AttemptResult, BlindWriteResult,
+  AnswerGrade, Attempt, AttemptIn, AttemptResult, BlindWriteResult, Credit,
   ComplexityStats, DailyQueue, FollowUp, InterviewQuestion, MockStart,
   PatternStat, Problem, ProblemDetail, Stats, TemplateSummary,
 } from './types'
@@ -76,6 +76,7 @@ export const api = {
   stats: () => request<Stats>('/stats'),
   patterns: () => request<PatternStat[]>('/stats/patterns'),
   complexityStats: () => request<ComplexityStats>('/stats/complexity'),
+  credit: (refresh = false) => request<Credit>(`/stats/credit${qs({ refresh: refresh || undefined })}`),
   heatmap: (days = 90) => request<{ date: string; count: number }[]>(`/stats/heatmap${qs({ days })}`),
 
   // --- mock interview ---

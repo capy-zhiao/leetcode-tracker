@@ -4,7 +4,7 @@
 import { useEffect, useState } from 'react'
 import ProblemListRow from '../components/ProblemListRow'
 import { api } from '../lib/api'
-import type { ChapterStat, Problem, Stats as StatsT } from '../lib/types'
+import type { ChapterStat, Credit, Problem, Stats as StatsT } from '../lib/types'
 
 export default function Stats() {
   const [s, setS] = useState<StatsT | null>(null)
@@ -20,6 +20,8 @@ export default function Stats() {
         <Metric label="Average time"
                 value={s.avg_seconds ? `${Math.round(s.avg_seconds / 60)} min` : '—'} />
       </div>
+
+      <CreditCard />
 
       <ChapterLibrary chapters={s.by_chapter} />
 
@@ -123,6 +125,79 @@ function ChapterLibrary({ chapters }: { chapters: ChapterStat[] }) {
         <span className="inline-block w-3 h-3 bg-sky-300 rounded-sm align-middle ml-3" /> in review
         <span className="ml-3">· click a chapter to see its problems</span>
       </p>
+    </section>
+  )
+}
+
+/** Remaining API credit. Hidden entirely when no AI provider is configured. */
+function CreditCard() {
+  const [enabled, setEnabled] = useState(false)
+  const [c, setC] = useState<Credit | null>(null)
+  const [error, setError] = useState('')
+  const [loading, setLoading] = useState(false)
+
+  const load = (refresh = false) => {
+    setLoading(true)
+    api.credit(refresh)
+      .then((r) => { setC(r); setError('') })
+      .catch((e) => setError((e as Error).message))
+      .finally(() => setLoading(false))
+  }
+
+  useEffect(() => {
+    api.health().then((h) => {
+      setEnabled(h.llm_enabled)
+      if (h.llm_enabled) load()
+    }).catch(() => {})
+  }, [])
+
+  if (!enabled) return null
+  const sym = c?.currency === 'CNY' ? '¥' : '$'
+  const money = (x: number | null | undefined) => (x == null ? '—' : `${sym}${x.toFixed(2)}`)
+  const left = c && c.granted ? c.available / c.granted : null
+  // Colour tracks how much is left; the text always states it too
+  const tone = left === null ? 'bg-indigo-400'
+    : left < 0.1 ? 'bg-rose-400' : left < 0.25 ? 'bg-amber-400' : 'bg-emerald-400'
+
+  return (
+    <section className="card">
+      <div className="flex items-baseline gap-2">
+        <h2 className="font-medium">🤖 AI credit</h2>
+        {c && (
+          <span className="text-xs text-slate-400">
+            {c.expires_at === 0 ? 'never expires'
+              : `expires ${new Date(c.expires_at * 1000).toLocaleDateString()}`}
+          </span>
+        )}
+        <button className="btn text-xs py-1 px-2 ml-auto" onClick={() => load(true)} disabled={loading}>
+          {loading ? 'Checking…' : 'Refresh'}
+        </button>
+      </div>
+
+      {error && !c && <p className="text-sm text-slate-500 mt-2">Couldn't read the balance: {error}</p>}
+
+      {c && (
+        <div className="mt-2 space-y-1.5">
+          <p className="text-sm">
+            <span className="text-2xl font-semibold">{c.unlimited ? 'Unlimited' : money(c.available)}</span>
+            {!c.unlimited && c.granted !== null && (
+              <span className="text-slate-500"> left of {money(c.granted)}</span>
+            )}
+          </p>
+          {left !== null && !c.unlimited && (
+            <div className="h-2 bg-slate-100 rounded-full overflow-hidden"
+                 role="progressbar" aria-valuenow={Math.round(left * 100)} aria-valuemin={0} aria-valuemax={100}
+                 aria-label="Credit remaining">
+              <div className={`h-full rounded-full ${tone}`} style={{ width: `${Math.max(left * 100, 1)}%` }} />
+            </div>
+          )}
+          {c.used !== null && (
+            <p className="text-xs text-slate-400">
+              {money(c.used)} used · complexity checks run on the cheap model, interview grading on the strong one
+            </p>
+          )}
+        </div>
+      )}
     </section>
   )
 }

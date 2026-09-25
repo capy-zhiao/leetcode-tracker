@@ -196,3 +196,14 @@ export interface AnswerGrade {
   missing: string[]
   model_answer: string
 }
+
+/** Remaining API credit reported by the LLM provider (GET /stats/credit). */
+export interface Credit {
+  source: 'relay' | 'deepseek'
+  currency: string
+  granted: number | null
+  used: number | null
+  available: number
+  unlimited: boolean
+  expires_at: number        // unix seconds, 0 = never
+}

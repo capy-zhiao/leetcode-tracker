@@ -2,10 +2,11 @@
 from collections import Counter
 from datetime import timedelta
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import select
 from sqlalchemy.orm import Session, selectinload
 
+from .. import credit, llm
 from ..complexity import EXPECTED, check as check_complexity
 from ..database import get_db
 from ..deps import local_date, today as get_today
@@ -201,3 +202,14 @@ def complexity_accuracy(db: Session = Depends(get_db)):
         accuracy=round(both / graded, 3) if graded else 0.0,
         worst=worst,
     )
+
+
+@router.get("/credit")
+def api_credit(refresh: bool = False):
+    """Remaining credit on the LLM provider's account (cached for a minute)."""
+    if not llm.is_enabled():
+        raise HTTPException(503, "AI features are off")
+    result = credit.fetch_credit(force=refresh)
+    if result is None:
+        raise HTTPException(502, "The provider did not report a balance")
+    return result
