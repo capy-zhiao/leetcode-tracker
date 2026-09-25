@@ -51,25 +51,80 @@ class AnswerGrade(BaseModel):
 
 
 class ComplexityVerdict(BaseModel):
-    actual_time: str = Field(description="Big-O time of THIS code as written, e.g. O(V + E)")
-    actual_space: str = Field(description="Big-O auxiliary space of THIS code as written")
+    """Laid out the way the result is read: right or wrong, why, the optimum, a faster version."""
+    actual_time: str = Field(description="Big-O time of THIS code as written. Notation only, "
+                                         "e.g. O(V + E) — no words")
+    actual_space: str = Field(description="Big-O auxiliary space of THIS code. Notation only")
     time_correct: bool = Field(description="Does the candidate's stated time equal actual_time?")
     space_correct: bool = Field(description="Does the candidate's stated space equal actual_space?")
-    optimal_time: str = Field(description="Best known time for this problem")
-    optimal_space: str = Field(description="Space of that best-known solution")
-    is_optimal: bool = Field(description="Is this code's time complexity optimal for the problem?")
-    explanation: str = Field(
-        description="Two or three sentences: define the variables, say where the dominant "
-                    "cost comes from, and if the candidate was wrong, what they missed"
+    why_wrong: str = Field(
+        default="",
+        description="Only if a stated answer is wrong: what the candidate missed and where "
+                    "the real cost comes from, naming the variables — one or two sentences. "
+                    "Empty string if both answers are correct.",
+    )
+    optimal_time: str = Field(description="Best known time for this problem. Notation only")
+    optimal_space: str = Field(description="Space of that best-known solution. Notation only")
+    time_optimal: bool = Field(description="Is this code's time already optimal? Equivalent "
+                                           "notation counts as equal (O(n) = O(V) when n is "
+                                           "the node count)")
+    space_optimal: bool = Field(description="Is this code's space already optimal? Equivalent "
+                                            "notation counts as equal")
+    optimal_how: str = Field(
+        default="",
+        description="Only if time or space is not optimal: the technique that reaches the "
+                    "optimum, one sentence. Empty string otherwise.",
     )
     optimized_code: str = Field(
         default="",
-        description="Only if this code is not optimal in time or in space: the candidate's "
-                    "code with the smallest change that reaches the optimal complexity — same "
-                    "class, method signature, variable names and style; change only what the "
-                    "optimisation needs. Complete code as plain text, no markdown. Empty "
-                    "string when the code is already optimal in both time and space.",
+        description="Only if time or space is not optimal: the candidate's code with the "
+                    "smallest change that reaches the optimum — same class, method signature, "
+                    "variable names and style. Complete code as plain text, no markdown. "
+                    "Empty string when already optimal in both.",
     )
+
+
+def first_big_o(text: str) -> str:
+    """The first O(...) in `text`, parentheses balanced — strips prose a model appends, as in
+    "O(V+E) (or O(V) with early edge count check)". Returns "" if there is none."""
+    i = (text or "").find("O(")
+    if i == -1:
+        return ""
+    depth = 0
+    for j in range(i + 1, len(text)):
+        depth += text[j] == "("
+        depth -= text[j] == ")"
+        if depth == 0:
+            return text[i:j + 1]
+    return ""
+
+
+def _is_placeholder(text: str) -> bool:
+    """Empty, or filler like "..." / "N/A" — seen from flash on the relay."""
+    t = (text or "").strip().strip(".").strip()
+    return len(t) < 12 or t.lower() in {"n/a", "none", "todo"}
+
+
+def verdict_problems(v: ComplexityVerdict) -> list[str]:
+    """What is missing or malformed in a verdict; empty when it is complete."""
+    issues = [f"{f} is not big-O notation" for f in
+              ("actual_time", "actual_space", "optimal_time", "optimal_space")
+              if not first_big_o(getattr(v, f))]
+    if not (v.time_correct and v.space_correct) and _is_placeholder(v.why_wrong):
+        issues.append("why_wrong missing for a wrong answer")
+    if not (v.time_optimal and v.space_optimal) and _is_placeholder(v.optimal_how):
+        issues.append("optimal_how missing for a non-optimal solution")
+    return issues
+
+
+def tidy_verdict(v: ComplexityVerdict) -> ComplexityVerdict:
+    """Big-O fields reduced to notation; placeholder text blanked rather than displayed."""
+    for f in ("actual_time", "actual_space", "optimal_time", "optimal_space"):
+        setattr(v, f, first_big_o(getattr(v, f)) or getattr(v, f).strip())
+    for f in ("why_wrong", "optimal_how"):
+        if _is_placeholder(getattr(v, f)):
+            setattr(v, f, "")
+    return v
 
 
 def extract_json(raw: str) -> str:
@@ -211,7 +266,7 @@ class DeepSeekProvider(_Provider):
         )
 
     @staticmethod
-    def request_options() -> dict:
+    def request_options(task: str = "default") -> dict:
         """Thinking-mode parameters. They go in extra_body, which the SDK merges into the
         top level of the request JSON — reasoning_effort's values (low/high/max) are
         DeepSeek's own, so they are kept out of the SDK's typed arguments."""
@@ -220,7 +275,11 @@ class DeepSeekProvider(_Provider):
                 "max_tokens": 16000,   # reasoning tokens count towards the limit
                 "extra_body": {
                     "thinking": {"type": "enabled"},
-                    "reasoning_effort": settings.deepseek_reasoning_effort,
+                    "reasoning_effort": (
+                        settings.deepseek_complexity_effort
+                        if task == "complexity" and settings.deepseek_complexity_effort
+                        else settings.deepseek_reasoning_effort
+                    ),
                 },
             }
         return {"max_tokens": 4000, "extra_body": {"thinking": {"type": "disabled"}}}
@@ -248,9 +307,12 @@ class DeepSeekProvider(_Provider):
                 model=self.model_for(task),
                 response_format={"type": "json_object"},
                 messages=[{"role": "user", "content": full}],
-                **self.request_options(),
+                **self.request_options(task),
             )
             raw = res.choices[0].message.content or ""
+            if getattr(res.choices[0], "finish_reason", None) == "length":
+                log.warning("DeepSeek [%s]: hit max_tokens — the reasoning used up the output "
+                            "budget before the answer was written", task)
             u = getattr(res, "usage", None)
             if u is not None:
                 details = getattr(u, "completion_tokens_details", None)
@@ -386,19 +448,39 @@ Rules:
 - Analyse the code AS WRITTEN, including any inefficiency it has.
 - Space means auxiliary space (recursion stack, hash maps, queues), excluding the returned
   output — but if the candidate's answer is only right when the output is counted, and
-  that is a reasonable reading, accept it and say so.
+  that is a reasonable reading, accept it.
 - Accept equivalent notation: O(n) for O(V) when n is the node count, O(m*n) for O(n*m),
   a stated bound that differs only by a constant.
 - Do not accept a looser or tighter bound: O(n) is wrong for O(n log n), and O(n^2) is
   wrong for O(n) unless the code really is quadratic.
-- Name your variables in the explanation (n = ..., V = ..., E = ...).
-- optimized_code: if the time OR the space is not optimal, rewrite THEIR code minimally to
-  reach the optimum, so a diff against their code shows only the optimisation. Copy every
-  line that does not need to change exactly as written — same formatting, one-line ifs,
-  blank lines, comments, spacing. Do not add imports (the judge provides them), type
-  hints, docstrings or explanatory comments. Leave it empty if both are already optimal."""
+- Use the bounds interviewers use; do not re-derive amortised analyses. Union-Find with
+  path compression counts as near-constant per operation, O(α(n)) ≈ O(1), whether or not
+  it also unions by rank — do not dwell on the O(log n) path-compression-only bound. Hash
+  map operations are O(1) average; comparison sorting is O(n log n).
+- Keep your reasoning short: this is a quick judgement, not a proof.
+- Big-O fields hold notation only, such as O(n log n) — never words or alternatives.
+- why_wrong: only when an answer is wrong. Say what they missed, naming the variables
+  (n = ..., V = ..., E = ...). Leave it empty when both answers are right.
+- time_optimal / space_optimal: judge each separately; equivalent notation is equal.
+- optimal_how and optimized_code: only when time OR space is not optimal.
+- optimized_code: rewrite THEIR code minimally to reach the optimum, so a diff against
+  their code shows only the optimisation. Copy every line that does not need to change
+  exactly as written — same formatting, one-line ifs, blank lines, comments, spacing. Do
+  not add imports (the judge provides them), type hints, docstrings or comments.
+- Never use placeholders such as "..." — write the actual content or leave it empty."""
 
-    return provider.complete(prompt, ComplexityVerdict, task="complexity")
+    # One retry when the reply parses but is incomplete (flash on the relay once returned
+    # "..." for both the explanation and the rewrite).
+    verdict = None
+    for attempt in range(2):
+        verdict = provider.complete(prompt, ComplexityVerdict, task="complexity")
+        if verdict is None:
+            return None
+        problems = verdict_problems(verdict)
+        if not problems:
+            break
+        log.warning("Incomplete complexity verdict (try %d): %s", attempt + 1, "; ".join(problems))
+    return tidy_verdict(verdict)
 
 
 def optimized_patch(user_code: str, optimized: str) -> tuple[str, list[str]]:
@@ -413,6 +495,11 @@ def optimized_patch(user_code: str, optimized: str) -> tuple[str, list[str]]:
     if fenced:
         code = fenced.group(1).strip()
     if not code:
+        return "", []
+    # "..." is valid Python (an Ellipsis expression) and once came back as the whole
+    # "rewrite" — so require an actual function, not just something that parses.
+    if "def " not in code or len(code.splitlines()) < 3:
+        log.warning("optimized_code is not a real solution (%r) — not shown", code[:40])
         return "", []
     try:
         ast.parse(code)

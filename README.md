@@ -3,7 +3,7 @@
 [![CI](https://github.com/capy-zhiao/leetcode-tracker/actions/workflows/ci.yml/badge.svg)](https://github.com/capy-zhiao/leetcode-tracker/actions/workflows/ci.yml)
 ![Python](https://img.shields.io/badge/python-3.12%20%7C%203.13-blue)
 ![React](https://img.shields.io/badge/react-18-61dafb)
-![Tests](https://img.shields.io/badge/tests-184-brightgreen)
+![Tests](https://img.shields.io/badge/tests-198-brightgreen)
 
 A spaced-repetition tracker for the **NeetCode 250**: it decides what to practise each day,
 schedules reviews on a forgetting curve, checks your complexity analysis, and runs timed
@@ -173,6 +173,13 @@ relay itself reports) or from DeepSeek's official balance endpoint. Balance read
 queries, not model calls: ten forced refreshes left the used-credit counter unchanged. The
 result is cached for a minute.
 
+The complexity check runs at low reasoning effort and is told to use the bounds interviewers
+use (Union-Find with path compression is near-constant, hash maps O(1)). At high effort,
+flash once spent its whole 16k output budget deliberating over the path-compression-only
+O(log n) bound for a 20-line Union-Find and returned nothing; with both changes the same
+check finished in 45s and 4k tokens. A verdict that parses but is incomplete (a wrong
+answer with no reason, a "..." placeholder) is retried once.
+
 Each task can run on its own model: the complexity check is a small, mechanical judgement
 and runs well on flash, while interview questions and answer grading stay on the default
 model. On four real checks (including two deliberately wrong answers) flash matched pro's
@@ -182,7 +189,9 @@ verdicts at about a twentieth of the cost. Each stored verdict records which mod
 solution, so an honest O(n²) analysis of a brute-force answer is marked wrong. With a
 provider configured, every submission is also sent to the model, which judges your answer
 against *the code you actually wrote* and says separately whether that code is optimal;
-its verdict replaces the table's. When your code is not optimal in time or space, the
+its verdict replaces the table's. The result reads in four parts: **verdict** (time and space,
+each right or wrong), **why it's wrong** (only when something is), **optimal** (the best
+known bounds, whether your code reaches them, and how), and an **optimized version**. When your code is not optimal in time or space, the
 same call returns **your code minimally rewritten to reach the optimum**, shown as a diff so
 only the optimisation stands out (e.g. a House Robber dp array becoming a two-slot rolling
 array: three changed lines). The rewrite must parse as Python or it is not shown; past

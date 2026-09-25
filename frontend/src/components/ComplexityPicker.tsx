@@ -72,12 +72,12 @@ function Field({
         className={`w-full mt-0.5 text-sm font-mono p-2 rounded-lg border ${border}`}
         spellCheck={false}
       />
-      {ok === false && expected && (
-        <span className="text-xs text-red-600">
-          {judgedBy === 'ai' ? `your code is ${expected}` : `expected ${expected}`}
-        </span>
+      {/* With an AI verdict the card below states right/wrong and why; the field only
+          carries the colour, so the same thing is not said twice. */}
+      {judgedBy === 'table' && ok === false && expected && (
+        <span className="text-xs text-red-600">expected {expected}</span>
       )}
-      {ok === true && <span className="text-xs text-emerald-600">correct</span>}
+      {judgedBy === 'table' && ok === true && <span className="text-xs text-emerald-600">correct</span>}
     </label>
   )
 }

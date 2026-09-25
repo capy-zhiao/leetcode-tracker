@@ -47,8 +47,9 @@ def make_provider(monkeypatch, content):
 
 
 VERDICT_JSON = ('{"actual_time": "O(V + E)", "actual_space": "O(V)", "time_correct": false, '
-                '"space_correct": true, "optimal_time": "O(V + E)", "optimal_space": "O(V)", '
-                '"is_optimal": true, "explanation": "n = V."}')
+                '"space_correct": true, "why_wrong": "O(n) ignores the E neighbour visits.", '
+                '"optimal_time": "O(V + E)", "optimal_space": "O(V)", '
+                '"time_optimal": true, "space_optimal": true}')
 
 
 def test_thinking_mode_is_requested(monkeypatch):
@@ -101,7 +102,7 @@ class StubProvider:
 def verdict(**over):
     base = dict(actual_time="O(m * n)", actual_space="O(m * n)", time_correct=True,
                 space_correct=True, optimal_time="O(m * n)", optimal_space="O(m * n)",
-                is_optimal=True, explanation="m, n = grid dimensions.")
+                time_optimal=True, space_optimal=True)
     return ComplexityVerdict(**{**base, **over})
 
 
@@ -128,7 +129,8 @@ def test_ai_off_is_503(client, sample_problems):
 
 
 def test_verdict_is_stored_and_decides_complexity_ok(client, sample_problems, stub):
-    stub(verdict(time_correct=True, space_correct=False, actual_space="O(m * n)"))
+    stub(verdict(time_correct=True, space_correct=False, actual_space="O(m * n)",
+                 why_wrong="The visited set holds every cell, so space is O(m * n)."))
     aid = submit(client, 200, t="O(m*n)", s="O(1)")
 
     body = client.post(f"/review/attempts/{aid}/complexity-ai").json()
@@ -142,14 +144,15 @@ def test_verdict_is_stored_and_decides_complexity_ok(client, sample_problems, st
 def test_ai_overrides_the_table_for_an_honest_brute_force(client, sample_problems, stub):
     """The point of the feature: O(n^2) is right for a quadratic solution even though the
     textbook answer is O(n) — the table marks it wrong, the AI marks it right."""
-    stub(verdict(actual_time="O(n^2)", time_correct=True, is_optimal=False,
-                 optimal_time="O(n)", actual_space="O(1)", space_correct=True))
+    stub(verdict(actual_time="O(n^2)", time_correct=True, time_optimal=False,
+                 optimal_time="O(n)", actual_space="O(1)", space_correct=True,
+                 optimal_how="One pass with a hash map of complements."))
     aid = submit(client, 1, t="O(n^2)", s="O(1)")        # Two Sum, nested loops
     assert client.get("/review/1/attempts").json()[0]["complexity_ok"] is False  # table
 
     body = client.post(f"/review/attempts/{aid}/complexity-ai").json()
     assert body["complexity_ok"] is True
-    assert body["complexity_ai"]["is_optimal"] is False
+    assert body["complexity_ai"]["time_optimal"] is False
 
     stats = client.get("/stats/complexity").json()
     assert stats["graded"] == 1 and stats["both_correct"] == 1
@@ -283,13 +286,14 @@ def test_markdown_fence_around_the_rewrite_is_stripped():
     assert code == ROLLING
 
 
-@pytest.mark.parametrize("rewrite", ["", "   ", "def rob(:\n    pass", DP_ARRAY])
+@pytest.mark.parametrize("rewrite", ["", "   ", "...", "pass", "def rob(:\n    pass", DP_ARRAY])
 def test_nothing_shown_for_empty_broken_or_unchanged_rewrites(rewrite):
     assert optimized_patch(DP_ARRAY, rewrite) == ("", [])
 
 
 def test_endpoint_stores_the_validated_rewrite_and_diff(client, sample_problems, stub):
-    stub(verdict(actual_space="O(n)", optimal_space="O(1)", optimized_code=ROLLING))
+    stub(verdict(actual_space="O(n)", optimal_space="O(1)", space_optimal=False,
+                 optimal_how="Keep only the last two values.", optimized_code=ROLLING))
     aid = submit(client, 200, code=DP_ARRAY, t="O(n)", s="O(n)")
     ai = client.post(f"/review/attempts/{aid}/complexity-ai").json()["complexity_ai"]
     assert ai["optimized_code"] == ROLLING
@@ -297,7 +301,89 @@ def test_endpoint_stores_the_validated_rewrite_and_diff(client, sample_problems,
 
 
 def test_endpoint_drops_a_rewrite_that_does_not_parse(client, sample_problems, stub):
-    stub(verdict(optimized_code="def rob(:"))
+    stub(verdict(space_optimal=False, optimal_how="Two rolling variables instead.",
+                 optimized_code="def rob(:"))
     aid = submit(client, 200, code=DP_ARRAY)
     ai = client.post(f"/review/attempts/{aid}/complexity-ai").json()["complexity_ai"]
     assert ai["optimized_code"] == "" and ai["optimized_diff"] == []
+
+
+
+# ---------------------------------------------------------------- verdict hygiene
+
+from app.llm import first_big_o, tidy_verdict, verdict_problems
+
+
+@pytest.mark.parametrize("raw,want", [
+    ("O(V+E) (or O(V) with early edge count check)", "O(V+E)"),
+    ("O(n log n)", "O(n log n)"),
+    ("about O(log (m + n)) overall", "O(log (m + n))"),
+    ("linear", ""),
+])
+def test_first_big_o_strips_prose(raw, want):
+    assert first_big_o(raw) == want
+
+
+def test_a_wrong_answer_needs_a_reason():
+    v = verdict(time_correct=False, why_wrong="...")
+    assert "why_wrong missing for a wrong answer" in verdict_problems(v)
+
+
+def test_a_non_optimal_solution_needs_the_technique():
+    v = verdict(space_optimal=False, optimal_how="")
+    assert any("optimal_how" in p for p in verdict_problems(v))
+
+
+def test_a_complete_verdict_has_no_problems():
+    assert verdict_problems(verdict()) == []
+
+
+def test_tidy_blanks_placeholders_and_trims_notation():
+    v = tidy_verdict(verdict(optimal_time="O(V+E) (or O(V))", why_wrong="..."))
+    assert v.optimal_time == "O(V+E)" and v.why_wrong == ""
+
+
+class SequenceProvider(StubProvider):
+    """Returns the given verdicts in order, one per call."""
+    def __init__(self, replies):
+        super().__init__(None)
+        self.replies = list(replies)
+
+    def complete(self, prompt, schema, task="default"):
+        self.prompts.append(prompt)
+        return self.replies.pop(0)
+
+
+def test_incomplete_verdict_is_retried_once(monkeypatch):
+    lazy = verdict(time_correct=False, why_wrong="...")
+    good = verdict(time_correct=False, why_wrong="The sort makes it O(n log n), not O(n).")
+    p = SequenceProvider([lazy, good])
+    monkeypatch.setattr(llm, "get_provider", lambda: p)
+    v = llm.analyze_complexity("X", 1, "def f(): pass", "O(n)", "O(1)")
+    assert len(p.prompts) == 2 and v.why_wrong.startswith("The sort")
+
+
+def test_still_incomplete_after_retry_is_tidied_not_shown_raw(monkeypatch):
+    lazy = verdict(time_correct=False, why_wrong="...")
+    p = SequenceProvider([lazy, verdict(time_correct=False, why_wrong="...")])
+    monkeypatch.setattr(llm, "get_provider", lambda: p)
+    v = llm.analyze_complexity("X", 1, "def f(): pass", "O(n)", "O(1)")
+    assert len(p.prompts) == 2 and v.why_wrong == ""
+
+
+def test_no_rewrite_shown_when_already_optimal(client, sample_problems, stub):
+    stub(verdict(optimized_code=ROLLING))          # optimal in both, yet code returned
+    aid = submit(client, 200, code=DP_ARRAY)
+    ai = client.post(f"/review/attempts/{aid}/complexity-ai").json()["complexity_ai"]
+    assert ai["optimized_code"] == "" and ai["optimized_diff"] == []
+
+
+
+def test_complexity_check_uses_its_own_reasoning_effort(monkeypatch):
+    monkeypatch.setattr(settings, "deepseek_thinking", True)
+    monkeypatch.setattr(settings, "deepseek_reasoning_effort", "high")
+    monkeypatch.setattr(settings, "deepseek_complexity_effort", "low")
+    provider, fake = make_provider(monkeypatch, VERDICT_JSON)
+    provider.complete("p", ComplexityVerdict, task="complexity")
+    provider.complete("p", ComplexityVerdict, task="interview")
+    assert [c["extra_body"]["reasoning_effort"] for c in fake.calls] == ["low", "high"]

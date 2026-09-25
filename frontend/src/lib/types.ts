@@ -85,13 +85,18 @@ export interface ComplexityVerdict {
   actual_space: string
   time_correct: boolean
   space_correct: boolean
+  why_wrong?: string        // only when an answer is wrong
   optimal_time: string
   optimal_space: string
-  is_optimal: boolean
-  explanation: string
+  time_optimal?: boolean
+  space_optimal?: boolean
+  optimal_how?: string      // only when time or space is not optimal
   optimized_code?: string   // validated rewrite of the submitted code; "" when already optimal
   optimized_diff?: string[] // unified diff: submitted code -> optimized
   model?: string            // which model judged it
+  // Verdicts stored before the four-part layout
+  explanation?: string
+  is_optimal?: boolean
 }
 
 export interface ComplexityCheck {

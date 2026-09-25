@@ -17,6 +17,10 @@ class Settings(BaseSettings):
     # not need the strongest model. Empty = use deepseek_model. Interview questions and
     # answer grading always use deepseek_model.
     deepseek_complexity_model: str = ""
+    # Reasoning effort for the complexity check. "low" by default: at "high", flash once
+    # spent all 16k output tokens thinking about a 20-line union-find and returned nothing.
+    # Empty = use deepseek_reasoning_effort.
+    deepseek_complexity_effort: str = "low"
     deepseek_base_url: str = "https://api.deepseek.com"
     # Thinking mode (DeepSeek's default is on). Reasoning tokens are billed as output.
     deepseek_thinking: bool = True

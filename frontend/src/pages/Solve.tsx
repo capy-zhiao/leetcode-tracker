@@ -3,7 +3,7 @@
 //
 // Fully keyboard driven: Space toggles the timer, 1-4 pick a grade, Cmd+Enter submits from
 // anywhere including inside the editor.
-import { useEffect, useState } from 'react'
+import { useEffect, useState, type ReactNode } from 'react'
 import { Link, useLocation, useParams } from 'react-router-dom'
 import CodeEditor from '../components/CodeEditor'
 import ComplexityPicker from '../components/ComplexityPicker'
@@ -223,6 +223,7 @@ export default function Solve() {
         />
         <AiComplexity
           state={aiState} verdict={aiVerdict} error={aiError}
+          stated={{ time: timeComplexity, space: spaceComplexity }}
           onRetry={attemptId !== null ? () => runAiComplexity(attemptId) : undefined}
         />
 
@@ -298,7 +299,8 @@ function HistoryRow({ a, pending = false }: { a: Attempt; pending?: boolean }) {
       </button>
       {open && a.complexity_ai && (
         <div className="mt-1 mb-2 ml-1">
-          <AiComplexity state="idle" verdict={a.complexity_ai} error="" />
+          <AiComplexity state="idle" verdict={a.complexity_ai} error=""
+                        stated={{ time: a.time_complexity, space: a.space_complexity }} />
         </div>
       )}
     </div>
@@ -306,12 +308,13 @@ function HistoryRow({ a, pending = false }: { a: Attempt; pending?: boolean }) {
 }
 
 function AiComplexity({
-  state, verdict, error, onRetry,
+  state, verdict, error, onRetry, stated,
 }: {
   state: 'idle' | 'running' | 'failed'
   verdict: ComplexityVerdict | null
   error: string
   onRetry?: () => void
+  stated?: { time: string; space: string }
 }) {
   if (state === 'running') {
     return (
@@ -334,29 +337,81 @@ function AiComplexity({
     )
   }
   if (!verdict) return null
-  // is_optimal only speaks to time. Space is compared separately, because "can you do it
-  // in O(1) space?" is the classic follow-up to an otherwise optimal DP array solution.
+  // Four parts, in reading order: right or wrong · why · the optimum · a faster version.
+  // Older stored verdicts lack the per-part fields, so fall back to what they do have.
   const norm = (x: string) => x.replace(/\s/g, '').toLowerCase()
-  const spaceImprovable = norm(verdict.actual_space) !== norm(verdict.optimal_space)
+  const timeOptimal = verdict.time_optimal ?? verdict.is_optimal ?? true
+  const spaceOptimal = verdict.space_optimal
+    ?? norm(verdict.actual_space) === norm(verdict.optimal_space)
+  const allRight = verdict.time_correct && verdict.space_correct
+  const filler = (x?: string) => !x || x.replace(/[\s.…]/g, '').length < 3   // "..." etc.
+  const rawWhy = verdict.why_wrong ?? (!allRight ? verdict.explanation : '')
+  const why = filler(rawWhy) ? '' : rawWhy
+  const hasRewrite = Boolean(verdict.optimized_diff?.length && verdict.optimized_code)
+
   return (
-    <div className="text-sm bg-indigo-50 border border-indigo-200 rounded-lg p-3 space-y-1">
-      <p className="text-indigo-950">
-        🤖 Your code: <b className="font-mono">{verdict.actual_time}</b> time,{' '}
-        <b className="font-mono">{verdict.actual_space}</b> space
-        {verdict.is_optimal
-          ? <span className="text-emerald-700"> · optimal time</span>
-          : <span className="text-amber-700"> · time can be{' '}
-              <span className="font-mono">{verdict.optimal_time}</span></span>}
-        {spaceImprovable && (
-          <span className="text-amber-700"> · space can be{' '}
-            <span className="font-mono">{verdict.optimal_space}</span></span>
-        )}
-      </p>
-      <p className="text-indigo-900/80">{verdict.explanation}</p>
-      {verdict.optimized_diff && verdict.optimized_diff.length > 0 && verdict.optimized_code && (
-        <OptimizedDiff diff={verdict.optimized_diff} code={verdict.optimized_code} />
+    <div className="text-sm bg-indigo-50 border border-indigo-200 rounded-lg p-3 space-y-3">
+      <div className="flex items-baseline">
+        <p className="font-medium text-indigo-950">🤖 Complexity check</p>
+        {verdict.model && <p className="ml-auto text-[11px] text-indigo-900/50">judged by {verdict.model}</p>}
+      </div>
+
+      <Part title="Verdict">
+        <VerdictRow label="Time" said={stated?.time} ok={verdict.time_correct} actual={verdict.actual_time} />
+        <VerdictRow label="Space" said={stated?.space} ok={verdict.space_correct} actual={verdict.actual_space} />
+      </Part>
+
+      {!allRight && why && (
+        <Part title="Why it's wrong">
+          <p className="text-indigo-950/90">{why}</p>
+        </Part>
       )}
-      {verdict.model && <p className="text-[11px] text-indigo-900/50">judged by {verdict.model}</p>}
+
+      <Part title="Optimal">
+        <p className="text-indigo-950">
+          <span className="font-mono">{verdict.optimal_time}</span> time ·{' '}
+          <span className="font-mono">{verdict.optimal_space}</span> space
+          {timeOptimal && spaceOptimal
+            ? <span className="text-emerald-700"> — your code is already optimal</span>
+            : <span className="text-amber-700"> — {[
+                !timeOptimal && 'time can improve', !spaceOptimal && 'space can improve',
+              ].filter(Boolean).join(', ')}</span>}
+        </p>
+        {verdict.optimal_how && !(timeOptimal && spaceOptimal) && (
+          <p className="text-indigo-950/80 mt-0.5">{verdict.optimal_how}</p>
+        )}
+      </Part>
+
+      {hasRewrite && (
+        <Part title="Optimized version">
+          <OptimizedDiff diff={verdict.optimized_diff!} code={verdict.optimized_code!} />
+        </Part>
+      )}
+    </div>
+  )
+}
+
+function Part({ title, children }: { title: string; children: ReactNode }) {
+  return (
+    <div>
+      <p className="text-[11px] font-semibold uppercase tracking-wide text-indigo-900/50 mb-1">{title}</p>
+      {children}
+    </div>
+  )
+}
+
+function VerdictRow({ label, said, ok, actual }: {
+  label: string; said?: string; ok: boolean; actual: string
+}) {
+  return (
+    <div className="flex items-baseline gap-2">
+      <span className="w-12 text-indigo-900/60">{label}</span>
+      <span className={ok ? 'text-emerald-700' : 'text-red-700'}>{ok ? '✓' : '✗'}</span>
+      <span className="text-indigo-950">
+        you said <span className="font-mono">{said || '—'}</span>
+        {ok ? <span className="text-emerald-700"> — correct</span>
+            : <span className="text-red-700"> — your code is <span className="font-mono">{actual}</span></span>}
+      </span>
     </div>
   )
 }
@@ -374,7 +429,7 @@ function OptimizedDiff({ diff, code }: { diff: string[]; code: string }) {
   return (
     <div className="pt-1">
       <div className="flex items-center gap-2 mb-1">
-        <p className="text-xs font-medium text-indigo-950">Optimized version — changes from your code</p>
+        <p className="text-xs text-indigo-900/70">changes from your code</p>
         <button type="button" className="btn text-[11px] py-0.5 px-2 ml-auto" onClick={copy}>
           {copied ? 'Copied' : 'Copy full code'}
         </button>
