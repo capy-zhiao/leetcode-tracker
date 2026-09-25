@@ -25,6 +25,7 @@ mock interviews with LLM-generated follow-up questions.
 | **Template blind-writing** | Write one of 15 algorithm skeletons from memory; it is graded against **checkpoints** (does `find` loop with `while`?) rather than text similarity, then shown as a diff |
 | **Complexity self-check** | Time and space are **required** before an attempt can be submitted, and graded against a reference for 217 of the 250 problems |
 | **Proficiency by pattern** | 40 techniques cutting across the roadmap, ranked weakest first, each linked to the drill that fixes it |
+| **Dark mode** | Follows the OS setting until you pick one with the toggle in the header, then remembers it |
 | **Fully keyboard driven** | Space, 1-4, ⌘↵, J/K — one solve without touching the mouse |
 
 ## 🏗 Architecture
@@ -59,6 +60,10 @@ Claude or DeepSeek                        interview follow-ups, grading, complex
   a UTC day boundary falls at 20:00 the previous evening in EDT — so an evening session
   would land on the next date, showing tomorrow's queue at 8pm and breaking the streak.
   `TIMEZONE` pins the zone when deploying to a UTC server.
+- **Dark mode without touching the components.** Every colour the app uses is a CSS
+  variable, and dark mode mirrors each scale (a `bg-emerald-100 text-emerald-700` chip
+  becomes an emerald-800 fill with emerald-200 text), so the ~300 colour classes stay
+  written for light mode only. The theme is applied by an inline script before first paint.
 - **Storage is swappable** — `DATABASE_URL` alone moves you between SQLite and Postgres.
 - **Everything degrades gracefully** — with no LLM configured, AI features return sensible
   fallbacks and the rest of the app is unaffected.

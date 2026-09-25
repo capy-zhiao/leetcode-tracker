@@ -11,6 +11,7 @@
 import Editor, { type OnMount } from '@monaco-editor/react'
 import { useRef } from 'react'
 import '../lib/monaco-setup'
+import { useTheme } from '../lib/theme'
 
 interface Props {
   value: string
@@ -30,6 +31,7 @@ export default function CodeEditor({
   // A ref, not state: changing it must not re-render (that would remount the editor).
   const submitRef = useRef(onSubmit)
   submitRef.current = onSubmit
+  const theme = useTheme()
 
   const handleMount: OnMount = (editor, monaco) => {
     editor.addCommand(
@@ -44,6 +46,7 @@ export default function CodeEditor({
       <Editor
         height={height}
         language={language}
+        theme={theme === 'dark' ? 'vs-dark' : 'light'}
         value={value}
         onChange={(v) => onChange(v ?? '')}
         onMount={handleMount}

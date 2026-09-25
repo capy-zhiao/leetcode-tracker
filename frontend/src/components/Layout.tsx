@@ -3,6 +3,7 @@
 import { useState, type ReactNode } from 'react'
 import { NavLink, useNavigate } from 'react-router-dom'
 import ShortcutHelp from './ShortcutHelp'
+import { setTheme, useTheme } from '../lib/theme'
 import { useHotkeys } from '../lib/useHotkeys'
 
 const links = [
@@ -16,6 +17,8 @@ const links = [
 export default function Layout({ children }: { children: ReactNode }) {
   const [helpOpen, setHelpOpen] = useState(false)
   const navigate = useNavigate()
+  const theme = useTheme()
+  const next = theme === 'dark' ? 'light' : 'dark'
 
   useHotkeys({
     '?': () => setHelpOpen(true),
@@ -45,9 +48,17 @@ export default function Layout({ children }: { children: ReactNode }) {
             </NavLink>
           ))}
           <button
+            onClick={() => setTheme(next)}
+            title={`Switch to ${next} mode`}
+            aria-label={`Switch to ${next} mode`}
+            className="ml-auto text-lg px-2 rounded-lg hover:bg-slate-100"
+          >
+            {theme === 'dark' ? '☀️' : '🌙'}
+          </button>
+          <button
             onClick={() => setHelpOpen(true)}
             title="Keyboard shortcuts"
-            className="ml-auto text-slate-400 hover:text-slate-700 text-sm px-2"
+            className="text-slate-400 hover:text-slate-700 text-sm px-2"
           >
             ⌘ <kbd className="border border-slate-200 rounded px-1 text-xs">?</kbd>
           </button>
