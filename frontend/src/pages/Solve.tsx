@@ -40,6 +40,10 @@ export default function Solve() {
   const [choices, setChoices] = useState<string[]>([])
   const [result, setResult] = useState<{ days: number } | null>(null)
   const [complexity, setComplexity] = useState<ComplexityCheck | null>(null)
+  // The lookup-table verdict. With AI on it stays hidden — the AI judges the code actually
+  // written, and showing the table first meant a red "expected O(1)" that the AI then
+  // contradicted a minute later. It is only a fallback if the AI call fails.
+  const [tableCheck, setTableCheck] = useState<ComplexityCheck | null>(null)
   // AI complexity check: runs after submitting, because thinking mode is slow
   const [aiEnabled, setAiEnabled] = useState(false)
   const [aiVerdict, setAiVerdict] = useState<ComplexityVerdict | null>(null)
@@ -89,18 +93,21 @@ export default function Solve() {
         time_complexity: timeComplexity, space_complexity: spaceComplexity,
       })
       setResult({ days: r.next_due_in_days })
-      setComplexity(r.complexity)
+      const useAi = aiEnabled && Boolean(code.trim())
+      setTableCheck(r.complexity)
+      if (!useAi) setComplexity(r.complexity)        // no AI: the reference check is the verdict
       setAttemptId(r.attempt.id)
+      if (useAi) runAiComplexity(r.attempt.id, r.complexity)   // not awaited
       setHistory(await api.attempts(num))
-      if (aiEnabled && code.trim()) runAiComplexity(r.attempt.id)   // not awaited
     } finally { setBusy(false) }
   }
 
   // Ask the AI to judge the stated complexity against the code actually written. Its
   // verdict replaces the lookup-table one, which only knows the textbook solution.
-  const runAiComplexity = async (id: number) => {
+  const runAiComplexity = async (id: number, fallback: ComplexityCheck | null = tableCheck) => {
     setAiState('running')
     setAiError('')
+    setComplexity(null)          // nothing judged on screen until the AI answers
     try {
       const a = await api.aiComplexity(id)
       const v = a.complexity_ai
@@ -116,6 +123,7 @@ export default function Solve() {
     } catch (e) {
       setAiState('failed')
       setAiError((e as Error).message)
+      setComplexity(fallback)    // fall back to the reference-answer check
     }
   }
 
@@ -248,7 +256,9 @@ export default function Solve() {
         <div className="card">
           <h2 className="font-medium mb-2">History</h2>
           <div className="space-y-1 text-sm">
-            {history.map((a) => <HistoryRow key={a.id} a={a} />)}
+            {history.map((a) => (
+              <HistoryRow key={a.id} a={a} pending={aiState === 'running' && a.id === attemptId} />
+            ))}
           </div>
         </div>
       )}
@@ -257,7 +267,7 @@ export default function Solve() {
 }
 
 /** One past attempt. Rows judged by the AI expand to show that verdict and its rewrite. */
-function HistoryRow({ a }: { a: Attempt }) {
+function HistoryRow({ a, pending = false }: { a: Attempt; pending?: boolean }) {
   const [open, setOpen] = useState(false)
   const expandable = Boolean(a.complexity_ai)
   return (
@@ -274,7 +284,9 @@ function HistoryRow({ a }: { a: Attempt }) {
         </span>
         <span className="w-12">{a.grade}</span>
         <span className="w-16 font-mono text-xs">{formatTime(a.seconds)}</span>
-        {a.complexity_ok !== null && (
+        {pending ? (
+          <span className="text-xs text-slate-400" title="the AI is still checking this one">⏳ O</span>
+        ) : a.complexity_ok !== null && (
           <span className="text-xs"
                 title={a.complexity_ai ? 'complexity, judged by AI against this code'
                                        : 'complexity, checked against the reference'}>
@@ -304,8 +316,9 @@ function AiComplexity({
   if (state === 'running') {
     return (
       <p className="text-sm text-indigo-700 bg-indigo-50 border border-indigo-200 rounded-lg p-3">
-        🤖 Checking your complexity against the code you wrote… thinking mode can take up
-        to a minute.
+        🤖 Checking your complexity against the code you wrote… <Elapsed />
+        <span className="text-indigo-500"> · usually 20s to 2 min, longer when it has to
+        write a faster version of your code</span>
       </p>
     )
   }
@@ -313,7 +326,9 @@ function AiComplexity({
     return (
       <div className="text-sm text-slate-600 bg-slate-50 border border-slate-200 rounded-lg p-3
                       flex items-center gap-3">
-        <span className="flex-1">🤖 AI check failed: {error}</span>
+        <span className="flex-1">
+          🤖 AI check failed: {error} — showing the check against the reference answer instead.
+        </span>
         {onRetry && <button className="btn text-xs" onClick={onRetry}>Retry</button>}
       </div>
     )
@@ -380,4 +395,15 @@ function OptimizedDiff({ diff, code }: { diff: string[]; code: string }) {
       </details>
     </div>
   )
+}
+
+/** Seconds since mount, so a long AI wait visibly isn't frozen. */
+function Elapsed() {
+  const [start] = useState(() => Date.now())
+  const [now, setNow] = useState(start)
+  useEffect(() => {
+    const id = setInterval(() => setNow(Date.now()), 1000)
+    return () => clearInterval(id)
+  }, [])
+  return <b className="font-mono tabular-nums">{Math.floor((now - start) / 1000)}s</b>
 }
