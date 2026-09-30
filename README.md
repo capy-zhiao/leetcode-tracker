@@ -25,9 +25,34 @@ Keeping track of review dates by hand wasn't realistic.
 
 ## Stack
 
-Frontend: React, TypeScript, Vite, Tailwind, Monaco.
-Backend: FastAPI, SQLAlchemy, SQLite or Postgres.
-AI features are optional and work with DeepSeek (or any OpenAI-compatible API) or Claude.
+**Frontend**
+
+- React 18 and TypeScript, built with Vite
+- React Router for the pages (Today, Drills, Patterns, Mock Interview, Stats)
+- Tailwind CSS. Every color is a CSS variable, which is how dark mode works without
+  duplicating styles
+- Monaco, the editor from VS Code, for writing solutions. It's bundled locally (works
+  offline) and only loads on pages that have an editor
+
+**Backend**
+
+- Python 3.12+, FastAPI, served with Uvicorn
+- SQLAlchemy 2.0 with SQLite locally and Postgres in production
+- Pydantic v2 for request and response models, pydantic-settings for config from `.env`
+- The spaced-repetition logic and daily queue are plain functions with no database or
+  clock access, so they're tested directly
+
+**AI (optional)**
+
+- DeepSeek through the OpenAI SDK, so any OpenAI-compatible API works, or Claude through
+  the Anthropic SDK
+- Used for the complexity check, mock interview questions, and grading your answers
+- Each task can use its own model, e.g. a cheaper one for complexity checks
+
+**Testing and CI**
+
+- pytest with FastAPI's test client against an in-memory SQLite database, about 200 tests
+- GitHub Actions runs the tests on Python 3.12 and 3.13 and builds the frontend on every push to main
 
 ## Running it
 
