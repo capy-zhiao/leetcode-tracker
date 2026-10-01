@@ -24,6 +24,7 @@ export interface Problem {
   url: string
   in_neetcode150: boolean
   in_top150: boolean
+  in_lc75: boolean
   kind: 'problem' | 'template'
   patterns: string[]
   state: ReviewStateT | null

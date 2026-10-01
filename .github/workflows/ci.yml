@@ -72,10 +72,11 @@ jobs:
           import sys
           sys.path.insert(0, "backend")
           from app.patterns import PATTERNS, PROBLEM_PATTERNS
-          from app.top_interview_150 import PROBLEM_SET, TOP_150
+          from app.study_plans import LC_75, PROBLEM_SET, TOP_150
 
           assert len(TOP_150) == 150, f"Top Interview 150 has {len(TOP_150)} problems"
-          assert len(PROBLEM_SET) == 223, f"problem set has {len(PROBLEM_SET)} problems"
+          assert len(LC_75) == 75, f"LeetCode 75 has {len(LC_75)} problems"
+          assert len(PROBLEM_SET) == 272, f"problem set has {len(PROBLEM_SET)} problems"
           untagged = PROBLEM_SET - set(PROBLEM_PATTERNS)
           assert not untagged, f"untagged problems: {sorted(untagged)}"
           unknown = {t for tags in PROBLEM_PATTERNS.values() for t in tags} - set(PATTERNS)

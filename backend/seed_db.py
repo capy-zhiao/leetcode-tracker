@@ -1,8 +1,9 @@
-"""Build the problem set (NeetCode 150 + LeetCode Top Interview 150) and the 15 templates.
+"""Build the problem set (NeetCode 150 + LeetCode's Top Interview 150 and LeetCode 75)
+and the 15 templates.
 
-Problems come from two sources: data/seed.json (extracted from the NeetCode markdown notes,
-with notes and solutions) and data/top_interview_150.json (LeetCode's study plan). Problems
-in neither list are removed — but only if they have no practice history.
+Problems come from data/seed.json (extracted from the NeetCode markdown notes, with notes
+and solutions) and the study plans in data/ (see app/study_plans.py). Problems in none of
+the lists are removed — but only if they have no practice history.
 
 Usage:  python seed_db.py           incremental: add new problems, keep attempt history
         python seed_db.py --reset   wipe and start over
@@ -22,8 +23,8 @@ from sqlalchemy import select
 from app.database import Base, SessionLocal, engine
 from app.models import Problem, ReviewState
 from app.neetcode150 import NEETCODE_150
-from app.top_interview_150 import (
-    PROBLEM_SET, TOP_150, TOP_150_PROBLEMS, CHAPTER_NAMES, chapter_for, leetcode_url,
+from app.study_plans import (
+    CHAPTER_NAMES, LC_75, PROBLEM_SET, TOP_150, chapter_for, plan_entry,
 )
 from app.patterns import patterns_for
 from app.srs import DEFAULT_EASE
@@ -77,7 +78,6 @@ def main() -> None:
     Base.metadata.create_all(bind=engine)
 
     seed = {p["number"]: p for p in json.loads(SEED.read_text(encoding="utf-8"))["problems"]}
-    top = {p["number"]: p for p in TOP_150_PROBLEMS}
     today = date.today()
     db = SessionLocal()
     added = updated = with_state = removed = 0
@@ -85,17 +85,19 @@ def main() -> None:
 
     def item_for(number: int) -> dict:
         """One problem's fields: from the notes if it's there (keeps notes and code),
-        otherwise from the Top 150 study plan. Every Top 150 problem links to LeetCode;
-        only NeetCode-150-only problems keep their neetcode.io link."""
+        otherwise from its study plan. Anything in a LeetCode study plan links to LeetCode
+        (via the first plan it appears in); only NeetCode-only problems keep neetcode.io."""
+        entry = plan_entry(number)
         if number in seed:
             item = dict(seed[number])
-            if number in top:
-                item["url"] = leetcode_url(top[number]["slug"])
+            if entry:
+                plan, q = entry
+                item["url"] = plan.url(q["slug"])
             return item
-        t = top[number]
-        ch = chapter_for(number, t["group"])
-        return {"number": number, "title": t["title"], "difficulty": t["difficulty"],
-                "chapter_num": ch, "chapter": CHAPTER_NAMES[ch], "url": leetcode_url(t["slug"]),
+        plan, q = entry
+        ch = chapter_for(number, q["group"])
+        return {"number": number, "title": q["title"], "difficulty": q["difficulty"],
+                "chapter_num": ch, "chapter": CHAPTER_NAMES[ch], "url": plan.url(q["slug"]),
                 "notes": "", "code": "", "solved": False}
 
     try:
@@ -110,6 +112,7 @@ def main() -> None:
                     difficulty=item["difficulty"], chapter_num=item["chapter_num"],
                     chapter=item["chapter"], url=item["url"],
                     in_neetcode150=number in NEETCODE_150, in_top150=number in TOP_150,
+                    in_lc75=number in LC_75,
                     kind="problem", notes=item["notes"], code=item["code"],
                     patterns=patterns_for(number, item["chapter_num"]),
                 )
@@ -125,6 +128,7 @@ def main() -> None:
                 p.patterns = patterns_for(number, p.chapter_num)
                 p.in_neetcode150 = number in NEETCODE_150
                 p.in_top150 = number in TOP_150
+                p.in_lc75 = number in LC_75
                 if item["notes"] and not p.notes:
                     p.notes = item["notes"]
                 if item["code"] and not p.code:

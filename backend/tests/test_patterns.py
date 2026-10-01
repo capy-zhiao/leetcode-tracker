@@ -9,7 +9,7 @@ from app.patterns import (
 )
 from app.templates_ref import BY_NUMBER
 
-from app.top_interview_150 import PROBLEM_SET
+from app.study_plans import PROBLEM_SET
 
 
 def test_every_tag_is_a_defined_pattern():

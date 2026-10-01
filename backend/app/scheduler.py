@@ -2,9 +2,8 @@
 
 Every day you get three things:
   1. Due reviews  — what SRS says is due, ranked by priority(), capped at N
-  2. New problems — the rest of the NeetCode 150 in roadmap order, then the Top
-                    Interview 150 problems in study-plan order (Bit & Math with them),
-                    Hards last
+  2. New problems — NeetCode 150 in roadmap order, then Top Interview 150, then
+                    LeetCode 75, each in its own order (Bit & Math wait), Hards last
   3. A template   — one of the 15 algorithm templates, also on an SRS schedule
 
 Key design decision: **overflow defers**. Twenty problems may be due on a day you can only
@@ -29,7 +28,7 @@ from sqlalchemy.orm import Session, selectinload
 from .config import settings
 from .models import Problem, ReviewState
 from .neetcode150 import NEETCODE_150_POSITION
-from .top_interview_150 import TOP_150_POSITION
+from .study_plans import PLANS, first_plan
 from .patterns import patterns_for
 from .srs import priority
 
@@ -103,19 +102,28 @@ def pick_diverse(
     return [item for _, item in picked]
 
 
-def plan_key(problem) -> tuple:
-    """Order for the second tier: LeetCode's Top Interview 150 study-plan order. NeetCode
-    150 problems moved here by `later_chapters` that aren't in that plan go after it, in
-    roadmap order."""
-    pos = TOP_150_POSITION.get(problem.number)
-    return (0, pos, 0) if pos is not None else (1, roadmap_key(problem), 0)
-
-
 def roadmap_key(problem) -> tuple:
     """Chapter, then NeetCode's order within the chapter; other problems follow the 150
     in their chapter, by number."""
     pos = NEETCODE_150_POSITION.get(problem.number)
     return (problem.chapter_num, 0 if pos else 1, pos[1] if pos else problem.number)
+
+
+def list_rank(problem, later_chapters: frozenset[int] = frozenset()) -> int:
+    """Which list a new problem is drawn from: 0 = NeetCode 150, then 1, 2, ... for the
+    study plans in PLANS order. NeetCode 150 problems in `later_chapters` wait with the
+    first plan. A problem in several plans counts toward the first."""
+    if problem.in_neetcode150:
+        return 1 if problem.chapter_num in later_chapters else 0
+    plan = first_plan(problem.number)
+    return 1 + PLANS.index(plan) if plan else len(PLANS) + 1
+
+
+def plan_key(problem, rank: int) -> tuple:
+    """Order inside a study-plan tier: that plan's own sequence. Problems in the tier but
+    not in the plan (deferred NeetCode chapters) follow, in roadmap order."""
+    pos = PLANS[rank - 1].position.get(problem.number) if rank <= len(PLANS) else None
+    return (0, pos, ()) if pos is not None else (1, 0, roadmap_key(problem))
 
 
 def new_problem_tiers(
@@ -124,31 +132,29 @@ def new_problem_tiers(
     nc150_first: bool = True,
     later_chapters: frozenset[int] = frozenset(),
 ) -> list[list]:
-    """Unstarted problems grouped into tiers, drawn from strictly in this order:
+    """Unstarted problems grouped into tiers, each exhausted before the next:
 
-        1. NeetCode 150, Easy/Medium        roadmap order
-        2. Top Interview 150, Easy/Medium   study-plan order
-        3. NeetCode 150, Hard               roadmap order
-        4. Top Interview 150, Hard          study-plan order
+        Easy/Medium:  NeetCode 150 (roadmap order) -> Top Interview 150 -> LeetCode 75
+        Hard:         the same three lists again
 
-    Problems in both lists count as NeetCode 150. hard_last=False merges the Hard tiers
-    into the ones above; nc150_first=False merges everything into plain roadmap order.
-    NeetCode 150 problems in `later_chapters` wait in the second tier (a study-plan
+    The study plans follow their own order on LeetCode. hard_last=False merges the Hard
+    tiers into the others; nc150_first=False puts everything in plain roadmap order.
+    NeetCode 150 problems in `later_chapters` wait with Top Interview 150 (a study-plan
     choice, not a data change — they stay NeetCode 150). Empty tiers are dropped.
     """
-    buckets: dict[tuple[bool, bool], list] = {}
+    buckets: dict[tuple[bool, int], list] = {}
     for p in problems:
         held_back = hard_last and p.difficulty == "Hard"
-        extra = nc150_first and (not p.in_neetcode150 or p.chapter_num in later_chapters)
-        buckets.setdefault((held_back, extra), []).append(p)
+        rank = list_rank(p, later_chapters) if nc150_first else 0
+        buckets.setdefault((held_back, rank), []).append(p)
 
     tiers = []
-    for (held_back, extra) in sorted(buckets):      # False sorts before True
-        group = buckets[(held_back, extra)]
-        if extra:
-            group.sort(key=plan_key)
-        else:
+    for (held_back, rank) in sorted(buckets):
+        group = buckets[(held_back, rank)]
+        if rank == 0:
             group.sort(key=roadmap_key)
+        else:
+            group.sort(key=lambda p, r=rank: plan_key(p, r))
         tiers.append(group)
     return tiers
 
@@ -209,7 +215,7 @@ def build_today(
     )
     queue.deferred = len(due_items) - len(queue.reviews)
 
-    # --- 2. New problems: the rest of the NeetCode 150 first, then Top Interview 150 ---
+    # --- 2. New problems: NeetCode 150, then Top Interview 150, then LeetCode 75 ---
     fresh = [p for p in problems if p.state is None or p.state.due is None]
     tiers = new_problem_tiers(
         fresh, settings.new_hard_last, settings.new_neetcode150_first,

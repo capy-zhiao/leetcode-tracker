@@ -117,7 +117,7 @@ def test_today_endpoint_interleaves_chapters(client, db_session):
 
 from app.neetcode150 import NEETCODE_150, NEETCODE_150_BY_CHAPTER
 from app.scheduler import new_problem_tiers, pick_tiered
-from app.top_interview_150 import TOP_150_POSITION
+from app.study_plans import LC_75_PLAN, TOP_150_PLAN
 
 
 def fresh(number, chapter, difficulty="Medium", pattern="x", nc150=True):
@@ -160,8 +160,16 @@ def test_top150_problems_follow_the_study_plan_order():
     nums = (380, 88, 274, 80, 58)                    # all Top 150, none NeetCode 150
     ps = [fresh(n, 1, nc150=False) for n in nums]
     order = [p.number for p in new_problem_tiers(ps)[0]]
-    assert order == sorted(nums, key=TOP_150_POSITION.__getitem__)
+    assert order == sorted(nums, key=TOP_150_PLAN.position.__getitem__)
     assert order[0] == 88, "Merge Sorted Array opens the study plan"
+
+
+def test_leetcode_75_comes_after_top_150_in_its_own_order():
+    """1768 and 1071 are LeetCode 75 only; 88 is Top 150."""
+    ps = [fresh(n, 1, "Easy", nc150=False) for n in (1071, 1768, 88)]
+    tiers = [[p.number for p in t] for t in new_problem_tiers(ps)]
+    assert tiers == [[88], sorted([1071, 1768], key=LC_75_PLAN.position.__getitem__)]
+    assert tiers[1][0] == 1768, "Merge Strings Alternately opens LeetCode 75"
 
 
 def test_later_chapter_problems_outside_the_plan_come_after_it():

@@ -33,6 +33,7 @@ class ProblemOut(BaseModel):
     url: str
     in_neetcode150: bool
     in_top150: bool = False
+    in_lc75: bool = False
     kind: str
     patterns: list[str] = []
     state: StateOut | None = None
