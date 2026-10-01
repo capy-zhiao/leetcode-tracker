@@ -10,18 +10,67 @@ reviews with spaced repetition, and checks your time and space complexity answer
 I built it because my markdown study plan stopped working past a hundred or so problems.
 Keeping track of review dates by hand wasn't realistic.
 
-## Features
+## What's in it
 
-- Daily queue: due reviews, new problems in NeetCode order, and one template drill
-- Spaced repetition: the next review date depends on how the attempt went
-- Complexity check: enter time and space before submitting. With an LLM set up, it judges
-  your answer against the code you actually wrote and shows a faster version if there is one
-- Template drills: write one of 15 algorithm templates from memory, checked against the
-  lines people usually get wrong
-- Mock interview: a random problem on a timer, then follow-up questions about your code,
-  graded by an LLM
-- Pattern view: progress by technique (sliding window, union-find, ...) instead of by chapter
-- Dark mode and keyboard shortcuts
+### Today
+
+![Today](docs/screenshots/today.webp)
+
+The home page. It has three lists:
+
+- **Review**: problems due for another pass, ranked by how overdue they are and how often
+  you've failed them. At most two per chapter, so a day isn't all one topic
+- **New**: the next problems you haven't done, NeetCode 150 first, in NeetCode's order
+- **Template drill**: one algorithm template to write from memory before you start
+
+Each row shows the difficulty, the pattern tags, how overdue it is, and how many times
+you've failed it. The chart at the bottom shows how many reviews come due over the next two
+weeks, plus how long the current backlog will take to clear.
+
+### Solving a problem
+
+Clicking a problem opens the solve page: a timer, a code editor, and a short form. You pick
+a grade (again / hard / good / easy, with a suggestion based on your time) and enter the
+time and space complexity before you can submit. The grade decides when the problem comes
+back.
+
+If an LLM is set up, your complexity answer is then checked against the code you actually
+wrote. The result has four parts: whether each answer is right, why it's wrong if it is,
+the optimal complexity, and your code rewritten to reach it, shown as a diff. Past results
+open from the History list at the bottom of the page.
+
+### Drills
+
+The 15 algorithm templates (union-find, grid DFS, Kahn's algorithm, binary search, and so
+on), each on its own review schedule. You write one from memory and it's checked against
+the lines that usually go wrong, like `find` using `while` instead of `if`. Renaming
+variables is fine; missing one of those lines isn't. You see the reference and a diff after
+checking.
+
+### Patterns
+
+Progress grouped by technique instead of by chapter, weakest first. Each pattern shows how
+many of its problems you've mastered and links to the template drill for it. Expanding a
+pattern lists its problems.
+
+### Mock interview
+
+A random problem with a countdown and your notes hidden. When you're done coding, the LLM
+reads your code and asks three follow-up questions about it. You answer each in writing
+and get a grade, what you missed, and a model answer.
+
+### Stats
+
+![Stats](docs/screenshots/stats.webp)
+
+Problems started and mastered, your streak, and average time per problem. If an LLM is set
+up, it also shows how much API credit is left. Below that is progress by chapter; clicking a
+chapter lists its problems, and the search box finds any problem by number or title.
+
+### Other
+
+Dark mode (follows your system setting, or use the toggle in the header) and keyboard
+shortcuts for most actions.
 
 ## Stack
 
