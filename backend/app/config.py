@@ -47,10 +47,10 @@ class Settings(BaseSettings):
     # Hold every Hard back until the Easy/Medium problems are done — the same rule as the
     # manual study plan. Set to false when you are ready to start on Hards.
     new_hard_last: bool = True
-    # Finish the NeetCode 150 before any of the 250 additions, which then come in a fixed
-    # shuffled order rather than chapter by chapter.
+    # Finish the NeetCode 150 before the Top Interview 150 problems that aren't in it,
+    # which then follow LeetCode's study-plan order.
     new_neetcode150_first: bool = True
-    # Chapters whose NeetCode 150 problems wait with the 250 additions instead (CSV).
+    # Chapters whose NeetCode 150 problems wait with the Top Interview 150 ones (CSV).
     # Default: Bit Manipulation (17) and Math & Geometry (18), which were left out of the
     # original study plan. They stay flagged as NeetCode 150 everywhere else.
     new_later_chapters: str = "17,18"

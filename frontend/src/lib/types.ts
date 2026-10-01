@@ -23,6 +23,7 @@ export interface Problem {
   chapter: string
   url: string
   in_neetcode150: boolean
+  in_top150: boolean
   kind: 'problem' | 'template'
   patterns: string[]
   state: ReviewStateT | null

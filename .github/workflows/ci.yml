@@ -66,19 +66,19 @@ jobs:
         with:
           python-version: '3.13'
 
-      - name: All 250 problems are present and tagged
+      - name: Problem set is complete and tagged
         run: |
           python - <<'PY'
-          import json, sys
+          import sys
           sys.path.insert(0, "backend")
           from app.patterns import PATTERNS, PROBLEM_PATTERNS
+          from app.top_interview_150 import PROBLEM_SET, TOP_150
 
-          problems = json.load(open("data/seed.json"))["problems"]
-          numbers = {p["number"] for p in problems}
-
-          assert len(problems) == 250, f"expected 250 problems, found {len(problems)}"
-          assert numbers <= set(PROBLEM_PATTERNS), "some problems have no pattern tag"
+          assert len(TOP_150) == 150, f"Top Interview 150 has {len(TOP_150)} problems"
+          assert len(PROBLEM_SET) == 223, f"problem set has {len(PROBLEM_SET)} problems"
+          untagged = PROBLEM_SET - set(PROBLEM_PATTERNS)
+          assert not untagged, f"untagged problems: {sorted(untagged)}"
           unknown = {t for tags in PROBLEM_PATTERNS.values() for t in tags} - set(PATTERNS)
           assert not unknown, f"undefined pattern ids: {unknown}"
-          print(f"OK: {len(problems)} problems, {len(PATTERNS)} patterns, all tagged")
+          print(f"OK: {len(PROBLEM_SET)} problems, {len(PATTERNS)} patterns, all tagged")
           PY

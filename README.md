@@ -4,7 +4,8 @@
 ![Python](https://img.shields.io/badge/python-3.12%20%7C%203.13-blue)
 ![React](https://img.shields.io/badge/react-18-61dafb)
 
-A study tracker for the NeetCode 250. It picks what to practice each day, schedules
+A study tracker for the NeetCode 150 plus LeetCode's Top Interview 150 (223 problems, since
+77 are in both). It picks what to practice each day, schedules
 reviews with spaced repetition, and checks your time and space complexity answers.
 
 I built it because my markdown study plan stopped working past a hundred or so problems.
@@ -20,7 +21,8 @@ The home page. It has three lists:
 
 - **Review**: problems due for another pass, ranked by how overdue they are and how often
   you've failed them. At most two per chapter, so a day isn't all one topic
-- **New**: the next problems you haven't done, NeetCode 150 first, in NeetCode's order
+- **New**: the next problems you haven't done, NeetCode 150 first in NeetCode's order,
+  then the rest of Top Interview 150 in LeetCode's study-plan order
 - **Template drill**: one algorithm template to write from memory before you start
 
 Each row shows the difficulty, the pattern tags, how overdue it is, and how many times
@@ -158,7 +160,8 @@ When more is due than you can do in a day, reviews are ranked by how overdue the
 how often you've failed them before. A day gets at most two reviews from the same chapter,
 so you don't end up with four graph problems in a row.
 
-New problems cover the NeetCode 150 first, in NeetCode's order, then the rest of the 250.
+New problems cover the NeetCode 150 first, in NeetCode's order, then the Top Interview 150
+problems that aren't in it, in LeetCode's study-plan order.
 Hard problems come last.
 
 Most of this can be adjusted in `backend/.env` (see `.env.example`).
@@ -170,8 +173,16 @@ through the queue. Press `?` in the app for the full list.
 
 ## Data
 
-The problem list comes from my NeetCode notes. `python3 scripts/extract_seed.py` turns
-the markdown into `data/seed.json`.
+The problem list combines two sources:
+
+- NeetCode 150, from my NeetCode notes. `python3 scripts/extract_seed.py` turns the
+  markdown into `data/seed.json`, including my notes and solutions
+- LeetCode's [Top Interview 150](https://leetcode.com/studyplan/top-interview-150/).
+  `python3 scripts/fetch_top_interview_150.py` saves the study plan to
+  `data/top_interview_150.json`
+
+`backend/seed_db.py` builds the problem set from both. Problems that drop out of both
+lists are removed, unless you've already practiced them.
 
 ## Deploying
 

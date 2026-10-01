@@ -77,7 +77,7 @@ export default function Today() {
 
       <Section title="🔁 Review" hint="ranked by priority · at most 2 per chapter or pattern, so the day stays mixed"
                items={queue.reviews} selected={selected} />
-      <Section title="🆕 New" hint="NeetCode 150 in order, then the 250 additions (Bit & Math with them) · Hards held back"
+      <Section title="🆕 New" hint="NeetCode 150 in order, then LeetCode Top Interview 150 (Bit & Math with them) · Hards held back"
                items={queue.new_problems} selected={selected} />
       <Section title="🔧 Template drill" hint="five minutes of blind writing before you start"
                items={queue.templates} selected={selected} />

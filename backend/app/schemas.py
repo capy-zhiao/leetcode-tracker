@@ -32,6 +32,7 @@ class ProblemOut(BaseModel):
     chapter: str
     url: str
     in_neetcode150: bool
+    in_top150: bool = False
     kind: str
     patterns: list[str] = []
     state: StateOut | None = None

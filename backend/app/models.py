@@ -32,6 +32,7 @@ class Problem(Base):
     chapter: Mapped[str] = mapped_column(String(60))
     url: Mapped[str] = mapped_column(String(300), default="")
     in_neetcode150: Mapped[bool] = mapped_column(Boolean, default=True)
+    in_top150: Mapped[bool] = mapped_column(Boolean, default=False)   # LeetCode Top Interview 150
     kind: Mapped[str] = mapped_column(String(20), default="problem")  # problem | template
     notes: Mapped[str] = mapped_column(Text, default="")         # migrated from markdown notes
     code: Mapped[str] = mapped_column(Text, default="")          # most recent accepted solution

@@ -2,8 +2,9 @@
 
 Every day you get three things:
   1. Due reviews  — what SRS says is due, ranked by priority(), capped at N
-  2. New problems — the rest of the NeetCode 150 in roadmap order, then the 250
-                    additions shuffled (Bit & Math with them), Hards last
+  2. New problems — the rest of the NeetCode 150 in roadmap order, then the Top
+                    Interview 150 problems in study-plan order (Bit & Math with them),
+                    Hards last
   3. A template   — one of the 15 algorithm templates, also on an SRS schedule
 
 Key design decision: **overflow defers**. Twenty problems may be due on a day you can only
@@ -18,7 +19,6 @@ and each primary pattern per day, then backfills so no slot goes unused.
 """
 from __future__ import annotations
 
-import hashlib
 from collections import Counter
 from dataclasses import dataclass, field
 from datetime import date, timedelta
@@ -29,6 +29,7 @@ from sqlalchemy.orm import Session, selectinload
 from .config import settings
 from .models import Problem, ReviewState
 from .neetcode150 import NEETCODE_150_POSITION
+from .top_interview_150 import TOP_150_POSITION
 from .patterns import patterns_for
 from .srs import priority
 
@@ -102,19 +103,17 @@ def pick_diverse(
     return [item for _, item in picked]
 
 
-def shuffle_key(number: int) -> str:
-    """A fixed pseudo-random position for a problem.
-
-    Not random.shuffle(): a reshuffle on every request would swap out the other two new
-    problems each time you finish one and reload. Not hash() either, which Python salts
-    per process. A digest of the number gives one stable permutation.
-    """
-    return hashlib.sha256(f"nc250:{number}".encode()).hexdigest()
+def plan_key(problem) -> tuple:
+    """Order for the second tier: LeetCode's Top Interview 150 study-plan order. NeetCode
+    150 problems moved here by `later_chapters` that aren't in that plan go after it, in
+    roadmap order."""
+    pos = TOP_150_POSITION.get(problem.number)
+    return (0, pos, 0) if pos is not None else (1, roadmap_key(problem), 0)
 
 
 def roadmap_key(problem) -> tuple:
-    """Chapter, then NeetCode's order within the chapter; additions follow the 150 in
-    their chapter, by number."""
+    """Chapter, then NeetCode's order within the chapter; other problems follow the 150
+    in their chapter, by number."""
     pos = NEETCODE_150_POSITION.get(problem.number)
     return (problem.chapter_num, 0 if pos else 1, pos[1] if pos else problem.number)
 
@@ -127,15 +126,15 @@ def new_problem_tiers(
 ) -> list[list]:
     """Unstarted problems grouped into tiers, drawn from strictly in this order:
 
-        1. NeetCode 150, Easy/Medium   roadmap order
-        2. 250 additions, Easy/Medium  shuffled
-        3. NeetCode 150, Hard          roadmap order
-        4. 250 additions, Hard         shuffled
+        1. NeetCode 150, Easy/Medium        roadmap order
+        2. Top Interview 150, Easy/Medium   study-plan order
+        3. NeetCode 150, Hard               roadmap order
+        4. Top Interview 150, Hard          study-plan order
 
-    hard_last=False merges the Hard tiers into the ones above; nc150_first=False merges
-    the 150 and the additions back into plain roadmap order. 150 problems in
-    `later_chapters` are treated as additions (a study-plan choice, not a data change —
-    they remain NeetCode 150). Empty tiers are dropped.
+    Problems in both lists count as NeetCode 150. hard_last=False merges the Hard tiers
+    into the ones above; nc150_first=False merges everything into plain roadmap order.
+    NeetCode 150 problems in `later_chapters` wait in the second tier (a study-plan
+    choice, not a data change — they stay NeetCode 150). Empty tiers are dropped.
     """
     buckets: dict[tuple[bool, bool], list] = {}
     for p in problems:
@@ -147,7 +146,7 @@ def new_problem_tiers(
     for (held_back, extra) in sorted(buckets):      # False sorts before True
         group = buckets[(held_back, extra)]
         if extra:
-            group.sort(key=lambda p: shuffle_key(p.number))
+            group.sort(key=plan_key)
         else:
             group.sort(key=roadmap_key)
         tiers.append(group)
@@ -210,7 +209,7 @@ def build_today(
     )
     queue.deferred = len(due_items) - len(queue.reviews)
 
-    # --- 2. New problems: the rest of the 150 first, then the 250 additions ---
+    # --- 2. New problems: the rest of the NeetCode 150 first, then Top Interview 150 ---
     fresh = [p for p in problems if p.state is None or p.state.due is None]
     tiers = new_problem_tiers(
         fresh, settings.new_hard_last, settings.new_neetcode150_first,

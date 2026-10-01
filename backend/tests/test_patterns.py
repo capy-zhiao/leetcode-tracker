@@ -3,16 +3,13 @@
 These are cheap invariants that catch the realistic failure mode: editing patterns.py and
 leaving a typo'd tag behind, which would silently create a phantom pattern in the UI.
 """
-import json
-from pathlib import Path
 
 from app.patterns import (
     CHAPTER_FALLBACK, PATTERN_TEMPLATE, PATTERNS, PROBLEM_PATTERNS, patterns_for,
 )
 from app.templates_ref import BY_NUMBER
 
-SEED = Path(__file__).resolve().parents[2] / "data" / "seed.json"
-SEED_NUMBERS = {p["number"] for p in json.loads(SEED.read_text())["problems"]}
+from app.top_interview_150 import PROBLEM_SET
 
 
 def test_every_tag_is_a_defined_pattern():
@@ -20,12 +17,12 @@ def test_every_tag_is_a_defined_pattern():
     assert used - set(PATTERNS) == set()
 
 
-def test_every_seeded_problem_is_tagged():
-    assert SEED_NUMBERS - set(PROBLEM_PATTERNS) == set()
+def test_every_problem_in_the_set_is_tagged():
+    assert PROBLEM_SET - set(PROBLEM_PATTERNS) == set()
 
 
-def test_no_tags_for_problems_outside_the_seed():
-    assert set(PROBLEM_PATTERNS) - SEED_NUMBERS == set()
+def test_no_tags_for_problems_outside_the_set():
+    assert set(PROBLEM_PATTERNS) - PROBLEM_SET == set()
 
 
 def test_no_orphan_patterns():

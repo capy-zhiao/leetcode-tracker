@@ -1,4 +1,8 @@
-"""Import data/seed.json into the database and register the 15 algorithm templates.
+"""Build the problem set (NeetCode 150 + LeetCode Top Interview 150) and the 15 templates.
+
+Problems come from two sources: data/seed.json (extracted from the NeetCode markdown notes,
+with notes and solutions) and data/top_interview_150.json (LeetCode's study plan). Problems
+in neither list are removed — but only if they have no practice history.
 
 Usage:  python seed_db.py           incremental: add new problems, keep attempt history
         python seed_db.py --reset   wipe and start over
@@ -18,6 +22,9 @@ from sqlalchemy import select
 from app.database import Base, SessionLocal, engine
 from app.models import Problem, ReviewState
 from app.neetcode150 import NEETCODE_150
+from app.top_interview_150 import (
+    PROBLEM_SET, TOP_150, TOP_150_PROBLEMS, CHAPTER_NAMES, chapter_for, leetcode_url,
+)
 from app.patterns import patterns_for
 from app.srs import DEFAULT_EASE
 
@@ -69,24 +76,38 @@ def main() -> None:
         print("Dropped existing tables")
     Base.metadata.create_all(bind=engine)
 
-    data = json.loads(SEED.read_text(encoding="utf-8"))
+    seed = {p["number"]: p for p in json.loads(SEED.read_text(encoding="utf-8"))["problems"]}
+    top = {p["number"]: p for p in TOP_150_PROBLEMS}
     today = date.today()
     db = SessionLocal()
-    added = updated = with_state = 0
+    added = updated = with_state = removed = 0
+    kept_with_history: list[int] = []
+
+    def item_for(number: int) -> dict:
+        """One problem's fields: from the notes if it's there (keeps notes and code),
+        otherwise from the Top 150 study plan."""
+        if number in seed:
+            return seed[number]
+        t = top[number]
+        ch = chapter_for(number, t["group"])
+        return {"number": number, "title": t["title"], "difficulty": t["difficulty"],
+                "chapter_num": ch, "chapter": CHAPTER_NAMES[ch], "url": leetcode_url(t["slug"]),
+                "notes": "", "code": "", "solved": False}
 
     try:
         existing = {p.number: p for p in db.scalars(select(Problem))}
 
-        for item in data["problems"]:
-            p = existing.get(item["number"])
+        for number in sorted(PROBLEM_SET):
+            item = item_for(number)
+            p = existing.get(number)
             if p is None:
                 p = Problem(
-                    number=item["number"], title=item["title"],
+                    number=number, title=item["title"],
                     difficulty=item["difficulty"], chapter_num=item["chapter_num"],
                     chapter=item["chapter"], url=item["url"],
-                    in_neetcode150=item["number"] in NEETCODE_150, kind="problem",
-                    notes=item["notes"], code=item["code"],
-                    patterns=patterns_for(item["number"], item["chapter_num"]),
+                    in_neetcode150=number in NEETCODE_150, in_top150=number in TOP_150,
+                    kind="problem", notes=item["notes"], code=item["code"],
+                    patterns=patterns_for(number, item["chapter_num"]),
                 )
                 db.add(p)
                 db.flush()
@@ -95,12 +116,11 @@ def main() -> None:
                 # Refresh static fields without touching attempt history
                 p.title, p.difficulty = item["title"], item["difficulty"]
                 p.url = item["url"] or p.url
-                # Pattern tags are derived data — always refresh them so retagging a
-                # problem in patterns.py takes effect on the next run.
-                p.patterns = patterns_for(item["number"], item["chapter_num"])
-                # Same for the 150 flag: the official list wins over whatever the
-                # markdown notes implied when the row was first created.
-                p.in_neetcode150 = item["number"] in NEETCODE_150
+                # Derived data — always refreshed, so editing patterns.py or the lists
+                # takes effect on the next run
+                p.patterns = patterns_for(number, p.chapter_num)
+                p.in_neetcode150 = number in NEETCODE_150
+                p.in_top150 = number in TOP_150
                 if item["notes"] and not p.notes:
                     p.notes = item["notes"]
                 if item["code"] and not p.code:
@@ -109,7 +129,7 @@ def main() -> None:
 
             # Already solved -> due today, so it enters the review queue immediately
             if item["solved"] and p.state is None:
-                lapses = KNOWN_LAPSES.get(item["number"], 0)
+                lapses = KNOWN_LAPSES.get(number, 0)
                 db.add(ReviewState(
                     problem_id=p.id, interval_days=1,
                     # Problems that caused trouble get a lower ease, so gaps grow slower
@@ -117,6 +137,16 @@ def main() -> None:
                     reps=1, lapses=lapses, due=today, total_attempts=0,
                 ))
                 with_state += 1
+
+        # Problems no longer in either list. Anything you've practised stays.
+        for number, p in existing.items():
+            if p.kind != "problem" or number in PROBLEM_SET:
+                continue
+            if p.attempts or (p.state and p.state.due is not None):
+                kept_with_history.append(number)
+                continue
+            db.delete(p)
+            removed += 1
 
         t_added = 0
         for num, name, ch_num, ch, diff in TEMPLATES:
@@ -137,7 +167,9 @@ def main() -> None:
         db.close()
 
     print("\nImport complete")
-    print(f"  problems added: {added}   updated: {updated}")
+    print(f"  problems added: {added}   updated: {updated}   removed: {removed}")
+    if kept_with_history:
+        print(f"  not in either list but kept (has practice history): {kept_with_history}")
     print(f"  solved -> due today: {with_state}")
     print(f"  templates: {t_added}")
     print(f"  pattern tags refreshed on {added + updated} problems")

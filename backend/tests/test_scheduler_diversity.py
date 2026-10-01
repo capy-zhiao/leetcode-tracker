@@ -116,7 +116,8 @@ def test_today_endpoint_interleaves_chapters(client, db_session):
 # --- new problems ---
 
 from app.neetcode150 import NEETCODE_150, NEETCODE_150_BY_CHAPTER
-from app.scheduler import new_problem_tiers, pick_tiered, shuffle_key
+from app.scheduler import new_problem_tiers, pick_tiered
+from app.top_interview_150 import TOP_150_POSITION
 
 
 def fresh(number, chapter, difficulty="Medium", pattern="x", nc150=True):
@@ -154,14 +155,20 @@ def test_150_tier_follows_neetcode_order_not_problem_number():
     assert [p.number for p in new_problem_tiers(ps)[0]] == [746, 198, 213, 5]
 
 
-def test_additions_are_shuffled_but_stable():
-    ps = [fresh(n, 1, nc150=False) for n in (169, 229, 304, 560, 705, 706, 912, 1929)]
+def test_top150_problems_follow_the_study_plan_order():
+    """Second tier = LeetCode's own sequence for the plan, not problem number."""
+    nums = (380, 88, 274, 80, 58)                    # all Top 150, none NeetCode 150
+    ps = [fresh(n, 1, nc150=False) for n in nums]
     order = [p.number for p in new_problem_tiers(ps)[0]]
-    assert order != sorted(order), "additions should not come in number order"
-    assert order == sorted(order, key=shuffle_key)
-    # Finishing one must not reshuffle the rest
-    rest = [p.number for p in new_problem_tiers([p for p in ps if p.number != order[0]])[0]]
-    assert rest == order[1:]
+    assert order == sorted(nums, key=TOP_150_POSITION.__getitem__)
+    assert order[0] == 88, "Merge Sorted Array opens the study plan"
+
+
+def test_later_chapter_problems_outside_the_plan_come_after_it():
+    """338 Counting Bits is NeetCode 150 (Bit, a later chapter) but not in Top 150."""
+    ps = [fresh(338, 17, "Easy"), fresh(88, 1, "Easy", nc150=False)]
+    tiers = new_problem_tiers(ps, later_chapters=frozenset({17, 18}))
+    assert [p.number for p in tiers[0]] == [88, 338]
 
 
 def test_150_is_exhausted_before_any_addition_even_in_one_chapter():

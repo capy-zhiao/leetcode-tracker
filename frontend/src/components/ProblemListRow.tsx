@@ -17,7 +17,10 @@ export default function ProblemListRow({ p, showChapter = false }: { p: Problem;
       <span className="font-mono text-xs text-slate-400 w-12 text-right">{p.number}</span>
       <span className="flex-1 truncate">{p.title}</span>
       {showChapter && <span className="text-xs text-slate-400 truncate max-w-32">{p.chapter}</span>}
-      {!p.in_neetcode150 && <span className="chip bg-purple-50 text-purple-600">250</span>}
+      {/* Only marks problems from LeetCode's Top Interview 150 that NeetCode 150 doesn't have */}
+      {!p.in_neetcode150 && p.in_top150 && (
+        <span className="chip bg-purple-50 text-purple-600" title="LeetCode Top Interview 150">Top 150</span>
+      )}
       {p.state?.due
         ? <span className={`text-xs ${mastered ? 'text-emerald-600' : 'text-slate-400'}`}>
             {mastered ? 'mastered' : `${p.state.interval_days}d interval`}

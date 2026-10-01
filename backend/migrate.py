@@ -25,6 +25,7 @@ KEEP_BACKUPS = 7
 COLUMNS: dict[str, list[tuple[str, str]]] = {
     "problems": [
         ("patterns", "TEXT DEFAULT '[]'"),
+        ("in_top150", "BOOLEAN DEFAULT 0"),
     ],
     "attempts": [
         ("time_complexity", "VARCHAR(40) DEFAULT ''"),
