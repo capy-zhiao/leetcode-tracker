@@ -38,7 +38,7 @@ def _load(filename: str, label: str) -> StudyPlan:
     return StudyPlan(slug=d["slug"], name=d["plan"], label=label, problems=tuple(d["problems"]))
 
 
-TOP_150_PLAN = _load("top_interview_150.json", "Top 150")
+TOP_150_PLAN = _load("top_interview_150.json", "LC 150")
 LC_75_PLAN = _load("leetcode_75.json", "LC 75")
 # Order matters: new problems come from NeetCode 150, then these plans in this order.
 # A problem in several plans belongs to the first one (its link and its place in line).

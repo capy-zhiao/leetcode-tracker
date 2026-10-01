@@ -12,5 +12,6 @@
                  hover:bg-slate-50 active:scale-[0.98] transition disabled:opacity-40
                  disabled:cursor-not-allowed; }
   .btn-primary { @apply bg-slate-900 text-white border-slate-900 hover:bg-slate-700; }
-  .chip { @apply inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-xs font-medium; }
+  .chip { @apply inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-xs font-medium
+                  whitespace-nowrap; }
 }
