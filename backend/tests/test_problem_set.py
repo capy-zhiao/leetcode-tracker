@@ -46,6 +46,13 @@ def test_seed_builds_the_set_and_prunes_only_untouched_problems(tmp_path):
     top_only = con.execute(
         "SELECT in_neetcode150, in_top150, url FROM problems WHERE number=380").fetchone()
     assert top_only[:2] == (0, 1) and "leetcode.com/problems/insert-delete-getrandom-o1" in top_only[2]
+    # in both lists -> LeetCode; NeetCode 150 only -> stays on neetcode.io
+    url = dict(con.execute("SELECT number, url FROM problems WHERE number IN (1, 217)").fetchall())
+    assert "leetcode.com/problems/two-sum/" in url[1]
+    assert "neetcode.io" in url[217]
+    links = con.execute("SELECT SUM(url LIKE '%leetcode.com%') FROM problems "
+                        "WHERE kind='problem' AND in_top150").fetchone()[0]
+    assert links == 150, "every Top 150 problem links to LeetCode"
 
     # Two problems outside the set: one practised, one never touched
     con.execute("INSERT INTO problems (number,title,difficulty,chapter_num,chapter,url,"

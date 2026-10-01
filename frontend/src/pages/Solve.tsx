@@ -153,7 +153,11 @@ export default function Solve() {
             </p>
             <PatternChips patterns={p.patterns} className="mt-2" linkTo />
           </div>
-          {p.url && <a href={p.url} target="_blank" rel="noreferrer" className="btn">Open on NeetCode ↗</a>}
+          {p.url && (
+            <a href={p.url} target="_blank" rel="noreferrer" className="btn">
+              Open on {p.url.includes('leetcode.com') ? 'LeetCode' : 'NeetCode'} ↗
+            </a>
+          )}
         </div>
         {p.notes && (
           <details className="mt-3">

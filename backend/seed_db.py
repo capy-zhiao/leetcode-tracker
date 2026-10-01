@@ -85,9 +85,13 @@ def main() -> None:
 
     def item_for(number: int) -> dict:
         """One problem's fields: from the notes if it's there (keeps notes and code),
-        otherwise from the Top 150 study plan."""
+        otherwise from the Top 150 study plan. Every Top 150 problem links to LeetCode;
+        only NeetCode-150-only problems keep their neetcode.io link."""
         if number in seed:
-            return seed[number]
+            item = dict(seed[number])
+            if number in top:
+                item["url"] = leetcode_url(top[number]["slug"])
+            return item
         t = top[number]
         ch = chapter_for(number, t["group"])
         return {"number": number, "title": t["title"], "difficulty": t["difficulty"],
